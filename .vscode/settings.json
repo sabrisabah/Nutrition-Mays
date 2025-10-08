@@ -1,0 +1,33 @@
+{
+    "python.defaultInterpreterPath": "./myenv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": false,
+    "python.linting.mypyEnabled": false,
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.extraPaths": [
+        "./myenv/Lib/site-packages"
+    ],
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.stubPath": "./myenv/Lib/site-packages",
+    "python.analysis.include": [
+        "src",
+        "accounts",
+        "bookings", 
+        "meal_plans",
+        "notifications",
+        "payments",
+        "reports",
+        "dr_mays_nutrition"
+    ],
+    "python.analysis.exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        "myenv",
+        "win_env",
+        "dist"
+    ]
+}
