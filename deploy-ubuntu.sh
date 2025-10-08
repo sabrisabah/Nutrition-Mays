@@ -74,10 +74,20 @@ npm --version
 
 # Step 3: Setup PostgreSQL
 print_status "Setting up PostgreSQL database..."
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
 sudo -u postgres psql -c "CREATE DATABASE drmays_nutrition;" || true
 sudo -u postgres psql -c "CREATE USER drmays_user WITH PASSWORD 'drmays_secure_password_2024';" || true
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE drmays_nutrition TO drmays_user;" || true
 sudo -u postgres psql -c "ALTER USER drmays_user CREATEDB;" || true
+
+# Test PostgreSQL connection
+if sudo -u postgres psql -c "SELECT version();" > /dev/null 2>&1; then
+    print_success "PostgreSQL connection successful"
+else
+    print_error "PostgreSQL connection failed"
+    exit 1
+fi
 
 # Step 4: Create application directory
 print_status "Setting up application directory..."
@@ -153,9 +163,9 @@ cat >> dr_mays_nutrition/settings.py << EOF
 # Production Settings
 import dj_database_url
 
-# Database
+# Database - Force PostgreSQL
 DATABASES = {
-    'default': dj_database_url.parse(config('DATABASE_URL', default='sqlite:///db.sqlite3'))
+    'default': dj_database_url.parse(config('DATABASE_URL', default='postgresql://drmays_user:drmays_secure_password_2024@localhost/drmays_nutrition'))
 }
 
 # Security Settings
@@ -190,24 +200,35 @@ LOGGING = {
         'verbose': {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
+
+        'simple': {
+            'format': '{levelname} {asctime} {message}',
+            'style': '{',
         },
     },
     'handlers': {
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': '/var/log/drmays.log',
-            'formatter': 'verbose',
-        },
         'console': {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': '/var/log/drmays/drmays.log',
+            'maxBytes': 1024*1024*5,  # 5 MB
+            'backupCount': 5,
             'formatter': 'verbose',
         },
     },
     'loggers': {
         'django': {
-            'handlers': ['file', 'console'],
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'dr_mays_nutrition': {
+            'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': True,
         },
@@ -230,6 +251,9 @@ preload_app = True
 EOF
 
 # Step 10: Database migration and setup
+print_status "Removing SQLite database file..."
+rm -f db.sqlite3
+
 print_status "Running database migrations..."
 python manage.py makemigrations
 python manage.py migrate
@@ -418,7 +442,15 @@ sudo ufw allow ssh
 sudo ufw allow 'Nginx Full'
 sudo ufw --force enable
 
-# Step 15: Set permissions
+# Step 15: Setup logging
+print_status "Setting up logging..."
+sudo mkdir -p /var/log/drmays
+sudo touch /var/log/drmays/drmays.log
+sudo chown -R www-data:www-data /var/log/drmays
+sudo chmod 755 /var/log/drmays
+sudo chmod 644 /var/log/drmays/drmays.log
+
+# Step 16: Set permissions
 print_status "Setting proper permissions..."
 sudo chown -R www-data:www-data /var/www/drmays
 sudo chmod -R 755 /var/www/drmays
