@@ -143,6 +143,11 @@ EOF
 
 # Step 8: Update Django settings for production
 print_status "Updating Django settings for production..."
+
+# Install dj-database-url
+pip install dj-database-url
+
+# Update settings.py with production configuration
 cat >> dr_mays_nutrition/settings.py << EOF
 
 # Production Settings
@@ -161,8 +166,10 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
-# Static Files
+# Static Files - Ensure proper configuration
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # CORS for Production
@@ -174,6 +181,38 @@ CORS_ALLOWED_ORIGINS = [
 
 # Update ALLOWED_HOSTS
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='').split(',')
+
+# Logging configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': '/var/log/drmays.log',
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
 EOF
 
 # Step 9: Create Gunicorn configuration
