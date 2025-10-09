@@ -50,7 +50,7 @@ sudo -u postgres psql
 
 # Create database and user
 CREATE DATABASE drmays_nutrition;
-CREATE USER drmays_user WITH PASSWORD 'your_secure_password_here';
+CREATE USER drmays_user WITH PASSWORD 'Passw0rd2025';
 GRANT ALL PRIVILEGES ON DATABASE drmays_nutrition TO drmays_user;
 ALTER USER drmays_user CREATEDB;
 \q
@@ -69,7 +69,7 @@ sudo chown $USER:$USER /var/www/drmays
 cd /var/www/drmays
 
 # Clone your repository (replace with your actual repo URL)
-git clone <your-repository-url> .
+git clone https://github.com/sabrisabah/Nutrition-Mays.git
 
 # Or if you're uploading files directly
 # Upload your project files to /var/www/drmays/
@@ -103,11 +103,11 @@ Add the following content:
 ```env
 # Django Settings
 DEBUG=False
-SECRET_KEY=your-super-secret-key-change-this-in-production
+SECRET_KEY=_23km%sr*_20d-7c%pcv+q+9jjn2l=efdfew)kwgjw$23(rvlv
 ALLOWED_HOSTS=mayslife.uk,www.mayslife.uk,158.178.143.50
 
 # Database Configuration
-DATABASE_URL=postgresql://drmays_user:your_secure_password_here@localhost/drmays_nutrition
+DATABASE_URL=postgresql://drmays_user:P@ssw0rd@1000@localhost/drmays_nutrition
 
 # Redis Configuration
 REDIS_URL=redis://localhost:6379
