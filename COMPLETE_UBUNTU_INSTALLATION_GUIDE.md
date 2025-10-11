@@ -181,7 +181,7 @@ scp -r C:\Project\1212/* maysuser@152.42.167.125:/srv/mayslife/Nutrition-Mays/
 **Option B: If using Git:**
 ```bash
 # Clone your repository
-git clone <your-repository-url> Nutrition-Mays
+git clone https://github.com/sabrisabah/Nutrition-Mays.git Nutrition-Mays
 cd Nutrition-Mays
 ```
 
@@ -472,37 +472,192 @@ sudo systemctl start drmays
 
 ---
 
-## 🌐 Step 13: Nginx Configuration
+## 🌐 Step 13: Frontend Setup (React + Vite)
 
-### 13.1 Create Nginx Site Configuration
+### 13.1 Upload Frontend Files
 ```bash
-sudo tee /etc/nginx/sites-available/drmays > /dev/null << 'EOF'
-server {
-    listen 80;
-    server_name 152.42.167.125 mayslife.uk www.mayslife.uk;
+# From your local machine, upload the frontend files
+scp -r C:\Project\1212/* maysuser@152.42.167.125:/srv/mayslife/Nutrition-Mays/
 
+# Set proper permissions
+sudo chown -R maysuser:maysuser /srv/mayslife/Nutrition-Mays
+chmod -R 755 /srv/mayslife/Nutrition-Mays
+```
+
+### 13.2 Install Frontend Dependencies
+```bash
+# Navigate to project directory
+cd /srv/mayslife/Nutrition-Mays
+
+# Install Node.js dependencies
+npm install
+```
+
+### 13.3 Build Frontend for Production
+```bash
+# Build the React frontend
+npm run build
+```
+
+### 13.4 Configure Django for Frontend
+```bash
+# Create templates directory
+mkdir -p templates
+
+# Create main template for React app
+cat > templates/index.html << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dr. Mays Nutrition System</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/assets/index.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/assets/index.js"></script>
+</body>
+</html>
+EOF
+```
+
+### 13.5 Update Django Settings for Frontend
+```bash
+# Add frontend configuration to Django settings
+cat >> dr_mays_nutrition/settings.py << 'EOF'
+
+# Frontend configuration
+FRONTEND_BUILD_DIR = BASE_DIR / 'dist'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+    FRONTEND_BUILD_DIR,  # Add the built frontend
+]
+
+# Template configuration
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [BASE_DIR / 'templates', FRONTEND_BUILD_DIR],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+EOF
+```
+
+### 13.6 Update Django URLs for Frontend
+```bash
+# Update Django URLs to serve React app
+cat > dr_mays_nutrition/urls.py << 'EOF'
+from django.contrib import admin
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+from django.views.generic import TemplateView
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('api/auth/', include('accounts.urls')),
+    path('api/meals/', include('meal_plans.urls')),
+    path('api/bookings/', include('bookings.urls')),
+    path('api/payments/', include('payments.urls')),
+    path('api/reports/', include('reports.urls')),
+    
+    # Serve frontend for all other routes
+    path('', TemplateView.as_view(template_name='index.html')),
+    path('<path:path>', TemplateView.as_view(template_name='index.html')),
+]
+
+# Only serve static files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+EOF
+```
+
+### 13.7 Collect Static Files
+```bash
+# Collect all static files including frontend
+source venv/bin/activate
+python3 manage.py collectstatic --noinput
+```
+
+---
+
+## 🔒 Step 14: SSL Configuration with Frontend
+
+### 14.1 Create Complete SSL Configuration
+```bash
+# Create the complete SSL configuration with frontend support
+sudo tee /etc/nginx/sites-available/mayslife.uk > /dev/null << 'EOF'
+server {
+    listen 443 ssl http2;
+    server_name mayslife.uk www.mayslife.uk;
+    
+    # SSL Configuration
+    ssl_certificate /etc/letsencrypt/live/mayslife.uk/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mayslife.uk/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
     add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
-
-    # Static files
+    
+    # Frontend assets (built React app)
+    location /assets/ {
+        alias /srv/mayslife/Nutrition-Mays/dist/assets/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # Static files (Django)
     location /static/ {
         alias /srv/mayslife/staticfiles/;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
-
+    
     # Media files
     location /media/ {
         alias /srv/mayslife/media/;
         expires 1y;
         add_header Cache-Control "public";
     }
-
-    # Django application
+    
+    # API routes
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+    }
+    
+    # Admin routes
+    location /admin/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+    }
+    
+    # Frontend routes (React app)
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
@@ -511,7 +666,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_redirect off;
     }
-
+    
     # Health check
     location /health/ {
         access_log off;
@@ -519,59 +674,26 @@ server {
         add_header Content-Type text/plain;
     }
 }
+
+# Redirect HTTP to HTTPS
+server {
+    listen 80;
+    server_name mayslife.uk www.mayslife.uk;
+    return 301 https://$server_name$request_uri;
+}
 EOF
 ```
 
-### 13.2 Enable Site and Test Configuration
+### 14.2 Enable Site and Test Configuration
 ```bash
 # Enable the site
-sudo ln -sf /etc/nginx/sites-available/drmays /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/mayslife.uk /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
 # Test Nginx configuration
 sudo nginx -t
 
-# Restart Nginx
-sudo systemctl restart nginx
-```
-
----
-
-## 🔒 Step 14: SSL Configuration (Update Existing)
-
-### 14.1 Update SSL Configuration
-Since you already have SSL configured, update your existing SSL configuration to include the Django app:
-
-```bash
-# Update your existing SSL site configuration
-sudo nano /etc/nginx/sites-available/your-existing-ssl-config
-
-# Add these location blocks to your existing server block:
-# location /static/ {
-#     alias /srv/mayslife/staticfiles/;
-#     expires 1y;
-#     add_header Cache-Control "public, immutable";
-# }
-# 
-# location /media/ {
-#     alias /srv/mayslife/media/;
-#     expires 1y;
-#     add_header Cache-Control "public";
-# }
-# 
-# location / {
-#     proxy_pass http://127.0.0.1:8000;
-#     proxy_set_header Host $host;
-#     proxy_set_header X-Real-IP $remote_addr;
-#     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-#     proxy_set_header X-Forwarded-Proto $scheme;
-#     proxy_redirect off;
-# }
-```
-
-### 14.2 Test and Reload Nginx
-```bash
-sudo nginx -t
+# Reload Nginx
 sudo systemctl reload nginx
 ```
 
@@ -579,7 +701,17 @@ sudo systemctl reload nginx
 
 ## 🔍 Step 15: Final Verification
 
-### 15.1 Check Service Status
+### 15.1 Start Django Service
+```bash
+# Start and enable Django service
+sudo systemctl start drmays
+sudo systemctl enable drmays
+
+# Check service status
+sudo systemctl status drmays
+```
+
+### 15.2 Check All Services
 ```bash
 # Check all services
 sudo systemctl status drmays nginx postgresql redis-server
@@ -591,16 +723,19 @@ sudo journalctl -u drmays -f
 sudo tail -f /var/log/nginx/error.log
 ```
 
-### 15.2 Test Application
+### 15.3 Test Application
 ```bash
 # Test health endpoint
-curl http://localhost/health/
+curl https://mayslife.uk/health/
 
 # Test Django application
-curl http://localhost/
-
-# Test with domain (if DNS is configured)
 curl https://mayslife.uk/
+
+# Test admin panel
+curl https://mayslife.uk/admin/
+
+# Test API endpoints
+curl https://mayslife.uk/api/auth/
 ```
 
 ---
@@ -629,10 +764,28 @@ sudo systemctl restart drmays
 # View logs
 sudo journalctl -u drmays -f
 
-# Update application
+# Update application (full update)
 cd /srv/mayslife/Nutrition-Mays
 source venv/bin/activate
 git pull origin main
+pip install -r requirements.txt
+npm install
+npm run build
+python3 manage.py migrate
+python3 manage.py collectstatic --noinput
+sudo systemctl restart drmays
+
+# Update frontend only
+cd /srv/mayslife/Nutrition-Mays
+npm install
+npm run build
+source venv/bin/activate
+python3 manage.py collectstatic --noinput
+sudo systemctl restart drmays
+
+# Update backend only
+cd /srv/mayslife/Nutrition-Mays
+source venv/bin/activate
 pip install -r requirements.txt
 python3 manage.py migrate
 python3 manage.py collectstatic --noinput
@@ -664,10 +817,26 @@ sudo systemctl restart drmays
    python3 manage.py collectstatic --noinput
    ```
 
-4. **Service Not Starting**
+4. **Frontend Not Loading**
+   ```bash
+   cd /srv/mayslife/Nutrition-Mays
+   npm install
+   npm run build
+   source venv/bin/activate
+   python3 manage.py collectstatic --noinput
+   sudo systemctl restart drmays
+   ```
+
+5. **Service Not Starting**
    ```bash
    sudo journalctl -u drmays -f
    sudo systemctl status drmays
+   ```
+
+6. **Nginx Configuration Issues**
+   ```bash
+   sudo nginx -t
+   sudo tail -f /var/log/nginx/error.log
    ```
 
 ---
@@ -676,10 +845,44 @@ sudo systemctl restart drmays
 
 - [ ] All services running (drmays, nginx, postgresql, redis-server)
 - [ ] Website accessible at https://mayslife.uk
+- [ ] React frontend loading correctly
 - [ ] Admin panel working at https://mayslife.uk/admin/
+- [ ] API endpoints working at https://mayslife.uk/api/
 - [ ] SSL certificate working
 - [ ] Static files loading correctly
+- [ ] Frontend assets loading correctly
 - [ ] Database connected and migrations applied
 - [ ] Logs showing no errors
 
-Your Dr. Mays Nutrition System is now ready for production use! 🚀
+## 🚀 Quick Start Commands
+
+If you want to run the complete setup quickly, here are the essential commands:
+
+```bash
+# 1. Upload files and set permissions
+scp -r C:\Project\1212/* maysuser@152.42.167.125:/srv/mayslife/Nutrition-Mays/
+sudo chown -R maysuser:maysuser /srv/mayslife/Nutrition-Mays
+
+# 2. Install and build frontend
+cd /srv/mayslife/Nutrition-Mays
+npm install
+npm run build
+
+# 3. Setup Django
+source venv/bin/activate
+python3 manage.py collectstatic --noinput
+
+# 4. Configure Nginx
+sudo tee /etc/nginx/sites-available/mayslife.uk > /dev/null << 'EOF'
+# [SSL configuration from Step 14.1]
+EOF
+
+# 5. Enable site and start services
+sudo ln -sf /etc/nginx/sites-available/mayslife.uk /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+sudo systemctl start drmays
+sudo systemctl enable drmays
+```
+
+Your Dr. Mays Nutrition System with React frontend is now ready for production use! 🚀
