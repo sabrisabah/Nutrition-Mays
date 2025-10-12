@@ -7,7 +7,7 @@ Type=simple
 User=mays
 Group=mays
 WorkingDirectory=/home/mays/drmays
-Environment=PATH=/home/mays/drmays/venv/bin
+Environment=PATH=/home/mays/drmays/venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=DJANGO_SETTINGS_MODULE=dr_mays_nutrition.settings
 ExecStart=/home/mays/drmays/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 --access-logfile /var/log/mayslife/access.log --error-logfile /var/log/mayslife/error.log --log-level info dr_mays_nutrition.wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
