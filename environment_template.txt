@@ -1,0 +1,164 @@
+# Dr. Mays Nutrition Platform - Environment Configuration Template
+# Copy this file to .env and update the values for your production environment
+
+# =============================================================================
+# CORE SETTINGS
+# =============================================================================
+DEBUG=False
+SECRET_KEY=your_super_secret_key_here_change_this_in_production
+ALLOWED_HOSTS=www.mayslife.uk,mayslife.uk,152.42.167.125,localhost,127.0.0.1
+
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+# PostgreSQL database URL
+# Format: postgresql://username:password@host:port/database_name
+DATABASE_URL=postgresql://drmays_user:your_secure_password_here@localhost:5432/drmays_db
+
+# =============================================================================
+# REDIS CONFIGURATION
+# =============================================================================
+# Redis URL for caching and message broker
+REDIS_URL=redis://localhost:6379/0
+
+# =============================================================================
+# EMAIL CONFIGURATION
+# =============================================================================
+# SMTP settings for sending emails
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your_email@gmail.com
+EMAIL_HOST_PASSWORD=your_app_password
+
+# Alternative email providers:
+# For Outlook/Hotmail:
+# EMAIL_HOST=smtp-mail.outlook.com
+# EMAIL_PORT=587
+
+# For Yahoo:
+# EMAIL_HOST=smtp.mail.yahoo.com
+# EMAIL_PORT=587
+
+# For custom SMTP:
+# EMAIL_HOST=your-smtp-server.com
+# EMAIL_PORT=587
+
+# =============================================================================
+# PAYMENT PROVIDERS CONFIGURATION
+# =============================================================================
+
+# ZainCash Payment Provider
+ZAINCASH_MERCHANT_ID=your_zaincash_merchant_id
+ZAINCASH_SECRET_KEY=your_zaincash_secret_key
+ZAINCASH_API_URL=https://api.zaincash.iq/transaction/init
+
+# AsiaHawala Payment Provider
+ASIAHAWALA_MERCHANT_ID=your_asiahawala_merchant_id
+ASIAHAWALA_SECRET_KEY=your_asiahawala_secret_key
+ASIAHAWALA_API_URL=https://api.asiahawala.com/transaction/init
+
+# Stripe Payment Provider (if using)
+STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
+STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+
+# =============================================================================
+# CORS CONFIGURATION
+# =============================================================================
+# Allowed origins for CORS (comma-separated)
+CORS_ALLOWED_ORIGINS=https://www.mayslife.uk,https://mayslife.uk
+
+# =============================================================================
+# SECURITY SETTINGS
+# =============================================================================
+# Set to True in production
+SECURE_SSL_REDIRECT=True
+SESSION_COOKIE_SECURE=True
+CSRF_COOKIE_SECURE=True
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+# Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_LEVEL=INFO
+
+# =============================================================================
+# CELERY CONFIGURATION
+# =============================================================================
+# Celery broker URL (usually same as Redis URL)
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
+
+# =============================================================================
+# FILE UPLOAD SETTINGS
+# =============================================================================
+# Maximum file upload size (in bytes)
+MAX_UPLOAD_SIZE=10485760  # 10MB
+
+# Allowed file types for uploads
+ALLOWED_FILE_TYPES=image/jpeg,image/png,image/gif,application/pdf
+
+# =============================================================================
+# NOTIFICATION SETTINGS
+# =============================================================================
+# Push notification settings (if using)
+FCM_SERVER_KEY=your_firebase_server_key
+FCM_SENDER_ID=your_firebase_sender_id
+
+# SMS settings (if using)
+SMS_PROVIDER=twilio
+TWILIO_ACCOUNT_SID=your_twilio_account_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_PHONE_NUMBER=your_twilio_phone_number
+
+# =============================================================================
+# MONITORING AND ANALYTICS
+# =============================================================================
+# Google Analytics (if using)
+GOOGLE_ANALYTICS_ID=GA-XXXXXXXXX
+
+# Sentry for error tracking (if using)
+SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
+
+# =============================================================================
+# BACKUP CONFIGURATION
+# =============================================================================
+# Backup settings
+BACKUP_RETENTION_DAYS=7
+BACKUP_S3_BUCKET=your-backup-bucket
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_STORAGE_BUCKET_NAME=your-storage-bucket
+
+# =============================================================================
+# DEVELOPMENT SETTINGS (for local development)
+# =============================================================================
+# Uncomment these for local development
+# DEBUG=True
+# ALLOWED_HOSTS=localhost,127.0.0.1
+# DATABASE_URL=sqlite:///db.sqlite3
+# REDIS_URL=redis://localhost:6379/0
+# CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+
+# =============================================================================
+# PRODUCTION SETTINGS (for production deployment)
+# =============================================================================
+# Uncomment these for production
+# DEBUG=False
+# ALLOWED_HOSTS=www.mayslife.uk,mayslife.uk,152.42.167.125
+# SECURE_SSL_REDIRECT=True
+# SESSION_COOKIE_SECURE=True
+# CSRF_COOKIE_SECURE=True
+
+# =============================================================================
+# NOTES
+# =============================================================================
+# 1. Never commit this file to version control
+# 2. Generate a strong SECRET_KEY for production
+# 3. Use environment-specific values for each deployment
+# 4. Regularly rotate passwords and API keys
+# 5. Monitor logs for any configuration issues
+# 6. Test email functionality after configuration
+# 7. Verify payment provider integration
+# 8. Ensure SSL certificates are properly configured
