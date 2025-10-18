@@ -180,18 +180,49 @@ class Invoice(models.Model):
     def __str__(self):
         return f"Invoice {self.invoice_number} - {self.user.get_full_name()}"
 
+    def save(self, *args, **kwargs):
+        """Override save to generate invoice number automatically"""
+        if not self.invoice_number:
+            # Generate invoice number in format: INV-YYYY-NNNNNN
+            from datetime import datetime
+            year = datetime.now().year
+            
+            # Get the last invoice number for this year
+            last_invoice = Invoice.objects.filter(
+                invoice_number__startswith=f'INV-{year}-'
+            ).order_by('-invoice_number').first()
+            
+            if last_invoice:
+                # Extract the number part and increment
+                try:
+                    last_number = int(last_invoice.invoice_number.split('-')[-1])
+                    next_number = last_number + 1
+                except (ValueError, IndexError):
+                    next_number = 1
+            else:
+                next_number = 1
+            
+            # Format with leading zeros (6 digits)
+            self.invoice_number = f'INV-{year}-{next_number:06d}'
+        
+        super().save(*args, **kwargs)
+
     @property
     def outstanding_amount(self):
-        return self.total_amount - self.paid_amount
+        total = self.total_amount or Decimal('0')
+        paid = self.paid_amount or Decimal('0')
+        return total - paid
 
     def mark_as_paid(self, amount=None):
         """Mark invoice as paid"""
         if amount is None:
             amount = self.outstanding_amount
         
-        self.paid_amount += amount
+        current_paid = self.paid_amount or Decimal('0')
+        self.paid_amount = current_paid + amount
         
-        if self.paid_amount >= self.total_amount:
+        total = self.total_amount or Decimal('0')
+        if self.paid_amount >= total:
             self.status = 'paid'
             from django.utils import timezone
             self.paid_date = timezone.now()
@@ -239,6 +270,15 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment {self.payment_id} - {self.amount} - {self.status}"
+
+    def save(self, *args, **kwargs):
+        """Override save to calculate net_amount automatically"""
+        if not self.net_amount:
+            # Calculate net_amount as amount - fee_amount
+            amount = self.amount or Decimal('0')
+            fee = self.fee_amount or Decimal('0')
+            self.net_amount = amount - fee
+        super().save(*args, **kwargs)
 
     def mark_as_completed(self):
         """Mark payment as completed"""
@@ -310,12 +350,21 @@ class Subscription(models.Model):
     @property
     def is_active(self):
         from django.utils import timezone
+        if not self.end_date:
+            return False
         return self.status == 'active' and self.end_date >= timezone.now().date()
 
     def renew(self, months=1):
         """Renew subscription for specified months"""
         from datetime import timedelta
-        self.end_date += timedelta(days=30 * months)
+        from django.utils import timezone
+        
+        if not self.end_date:
+            # If no end_date, set it to current date + months
+            self.end_date = timezone.now().date() + timedelta(days=30 * months)
+        else:
+            self.end_date += timedelta(days=30 * months)
+        
         self.status = 'active'
         self.save()
 

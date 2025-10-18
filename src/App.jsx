@@ -41,6 +41,9 @@ import AdminSettings from './pages/admin/Settings'
 // Common Pages
 import NotFound from './pages/NotFound'
 
+// Iraqi Nutrition Pages
+import DailyMealPlanner from './components/DailyMealPlanner'
+
 function App() {
   const { user, loading } = useAuth()
   const { language, direction } = useLanguage()
@@ -147,6 +150,13 @@ function App() {
                   <DoctorMealPlans />
                 </ProtectedRoute>
               } />
+
+        {/* Iraqi Nutrition Routes */}
+        <Route path="/iraqi-nutrition/meal-planner" element={
+          <ProtectedRoute allowedRoles={['patient', 'doctor', 'admin']}>
+            <DailyMealPlanner />
+          </ProtectedRoute>
+        } />
 
               {/* Admin Routes */}
               <Route path="/admin/dashboard" element={

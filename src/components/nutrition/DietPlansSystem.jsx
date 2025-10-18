@@ -5,13 +5,14 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
   const [customizedPlan, setCustomizedPlan] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showFullDetails, setShowFullDetails] = useState(false)
+  const [selectedCalories, setSelectedCalories] = useState(null) // حفظ السعرات المختارة
 
   // تعريف الأنظمة الغذائية المتكاملة
   const dietPlans = {
     keto: {
       id: 'keto',
       name: 'نظام الكيتو دايت',
-      description: 'نظام غذائي عالي الدهون ومنخفض الكربوهيدرات لحرق الدهون',
+      description: 'نظام غذائي عالي الدهون ومنخفض الكربوهيدرات لحرق الدهون (يتم تخفيض 500 سعرة حرارية)',
       icon: '🥑',
       color: 'success',
       macroDistribution: {
@@ -77,7 +78,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     balanced: {
       id: 'balanced',
       name: 'النظام المتوازن',
-      description: 'نظام غذائي متوازن يحتوي على جميع العناصر الغذائية',
+      description: 'نظام غذائي متوازن يحتوي على جميع العناصر الغذائية (يتم تخفيض 500 سعرة حرارية)',
       icon: '⚖️',
       color: 'primary',
       macroDistribution: {
@@ -137,10 +138,73 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
         'يدعم فقدان الوزن التدريجي'
       ]
     },
+    integrated: {
+      id: 'integrated',
+      name: 'النظام الغذائي المتكامل',
+      description: 'نظام غذائي متكامل وشامل يحتوي على جميع العناصر الغذائية (يتم تخفيض 500 سعرة حرارية)',
+      icon: '🎯',
+      color: 'info',
+      macroDistribution: {
+        carbs: 45,   // 45% من السعرات
+        protein: 30, // 30% من السعرات
+        fat: 25      // 25% من السعرات
+      },
+      dailyMeals: {
+        breakfast: [
+          'شوفان مع الحليب (كوب)',
+          'موز (حبة متوسطة)',
+          'جوز (10 حبات)',
+          'عسل (ملعقة صغيرة)'
+        ],
+        lunch: [
+          'أرز بني (كوب)',
+          'دجاج مشوي (150 جم)',
+          'خضروات مشكلة',
+          'سلطة خضراء'
+        ],
+        dinner: [
+          'سمك مشوي (150 جم)',
+          'بطاطا حلوة مشوية',
+          'بروكلي مطهو',
+          'سلطة خضراء'
+        ],
+        snacks: [
+          'تفاح (حبة)',
+          'زبدة الفول السوداني (ملعقة)',
+          'جبنة قليلة الدسم (30 جم)'
+        ]
+      },
+      allowedFoods: [
+        'جميع أنواع الحبوب الكاملة',
+        'الفواكه والخضروات',
+        'البروتينات الخالية من الدهون',
+        'الدهون الصحية',
+        'منتجات الألبان قليلة الدسم',
+        'المكسرات والبذور'
+      ],
+      restrictedFoods: [
+        'الأطعمة المصنعة',
+        'السكريات المضافة',
+        'الدهون المتحولة',
+        'المشروبات المحلاة'
+      ],
+      benefits: [
+        'تخفيض الوزن بطريقة صحية',
+        'تحسين الصحة العامة',
+        'زيادة الطاقة',
+        'تحسين الهضم'
+      ],
+      considerations: [
+        'شرب ماء كافي',
+        'ممارسة الرياضة بانتظام',
+        'تجنب الأطعمة المصنعة',
+        'مراقبة الوزن'
+      ]
+    },
     weightGain: {
       id: 'weightGain',
       name: 'نظام زيادة الوزن',
-      description: 'نظام غذائي عالي السعرات لزيادة الوزن بطريقة صحية',
+      description: 'نظام غذائي عالي السعرات لزيادة الوزن بطريقة صحية (يتم تخفيض 500 سعرة حرارية)',
       icon: '📈',
       color: 'warning',
       macroDistribution: {
@@ -204,7 +268,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     pregnancy: {
       id: 'pregnancy',
       name: 'نظام الحامل',
-      description: 'نظام غذائي مخصص للحوامل مع التركيز على العناصر الغذائية المهمة',
+      description: 'نظام غذائي مخصص للحوامل مع التركيز على العناصر الغذائية المهمة (يتم تخفيض 500 سعرة حرارية)',
       icon: '🤱',
       color: 'info',
       macroDistribution: {
@@ -269,7 +333,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     breastfeeding: {
       id: 'breastfeeding',
       name: 'نظام المرضع',
-      description: 'نظام غذائي مخصص للمرضعات مع زيادة السعرات والعناصر الغذائية',
+      description: 'نظام غذائي مخصص للمرضعات مع زيادة السعرات والعناصر الغذائية (يتم تخفيض 500 سعرة حرارية)',
       icon: '🍼',
       color: 'info',
       macroDistribution: {
@@ -333,7 +397,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     diabetes: {
       id: 'diabetes',
       name: 'نظام السكري',
-      description: 'نظام غذائي مخصص لمرضى السكري مع التحكم في الكربوهيدرات',
+      description: 'نظام غذائي مخصص لمرضى السكري مع التحكم في الكربوهيدرات (يتم تخفيض 500 سعرة حرارية)',
       icon: '🩺',
       color: 'danger',
       macroDistribution: {
@@ -397,7 +461,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     weightMaintenance: {
       id: 'weightMaintenance',
       name: 'نظام تثبيت الوزن',
-      description: 'نظام غذائي للحفاظ على الوزن الحالي مع التوازن الغذائي',
+      description: 'نظام غذائي للحفاظ على الوزن الحالي مع التوازن الغذائي (يتم تخفيض 500 سعرة حرارية)',
       icon: '⚖️',
       color: 'secondary',
       macroDistribution: {
@@ -456,6 +520,70 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
         'ممارسة الرياضة',
         'تجنب الإفراط في الطعام'
       ]
+    },
+    high_protein: {
+      id: 'high_protein',
+      name: 'النظام الغذائي عالي البروتين',
+      description: 'نظام غذائي يركز على البروتين لبناء العضلات وفقدان الدهون (يتم تخفيض 500 سعرة حرارية)',
+      icon: '💪',
+      color: 'primary',
+      macroDistribution: {
+        carbs: 30,   // 30% من السعرات
+        protein: 40, // 40% من السعرات
+        fat: 30      // 30% من السعرات
+      },
+      dailyMeals: {
+        breakfast: [
+          'بيض مسلوق (3 بيضات)',
+          'صدر دجاج مشوي (100 جم)',
+          'خبز أسمر (شريحة واحدة)',
+          'جبن قليل الدسم (30 جم)'
+        ],
+        lunch: [
+          'سمك سلمون مشوي (150 جم)',
+          'أرز بني (100 جم)',
+          'بروكلي مطهو',
+          'سلطة خضراء'
+        ],
+        dinner: [
+          'لحم بقري مشوي (120 جم)',
+          'بطاطا حلوة مشوية',
+          'سبانخ مطهو',
+          'جبن قليل الدسم (20 جم)'
+        ],
+        snacks: [
+          'زبادي يوناني (150 جم)',
+          'لوز (15 حبة)',
+          'بروتين شيك',
+          'جبن قليل الدسم (30 جم)'
+        ]
+      },
+      allowedFoods: [
+        'اللحوم الخالية من الدهون',
+        'الدواجن والأسماك',
+        'البيض ومنتجات الألبان',
+        'البقوليات والمكسرات',
+        'الخضروات الورقية',
+        'الحبوب الكاملة'
+      ],
+      restrictedFoods: [
+        'الأطعمة عالية الكربوهيدرات',
+        'السكريات المضافة',
+        'الدهون المشبعة',
+        'المشروبات المحلاة'
+      ],
+      benefits: [
+        'بناء العضلات',
+        'فقدان الدهون',
+        'تحسين التمثيل الغذائي',
+        'الشعور بالشبع'
+      ],
+      considerations: [
+        'شرب الماء بكثرة',
+        'توزيع البروتين على الوجبات',
+        'ممارسة تمارين القوة',
+        'مراقبة وظائف الكلى'
+      ]
     }
   }
 
@@ -463,20 +591,33 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
   const calculateCustomizedMacros = (dietPlan) => {
     if (!nutritionData || !dietPlan) return null
 
-    const { targetCalories } = nutritionData
+    // استخدام السعرات المختارة إذا كانت متوفرة، وإلا استخدام السعرات الأصلية
+    let baseCalories = selectedCalories || nutritionData.targetCalories
     const { macroDistribution } = dietPlan
 
-    const carbs = Math.round((targetCalories * macroDistribution.carbs / 100) / 4)
-    const protein = Math.round((targetCalories * macroDistribution.protein / 100) / 4)
-    const fat = Math.round((targetCalories * macroDistribution.fat / 100) / 9)
+r    // طرح 500 سعرة حرارية لجميع الأنظمة الغذائية
+    baseCalories = Math.max(baseCalories - 500, 1200) // الحد الأدنى 1200 سعرة
+
+    const carbs = Math.round((baseCalories * macroDistribution.carbs / 100) / 4)
+    const protein = Math.round((baseCalories * macroDistribution.protein / 100) / 4)
+    const fat = Math.round((baseCalories * macroDistribution.fat / 100) / 9)
 
     return {
       carbs,
       protein,
       fat,
-      calories: targetCalories
+      calories: baseCalories,
+      originalCalories: nutritionData.targetCalories, // حفظ السعرات الأصلية
+      calorieReduction: 500 // مقدار التخفيض لجميع الأنظمة
     }
   }
+
+  // إعادة تعيين السعرات المختارة عند تغيير بيانات المريض
+  useEffect(() => {
+    setSelectedCalories(null)
+    setSelectedDietPlan(null)
+    setCustomizedPlan(null)
+  }, [nutritionData])
 
   // تحديث الخطة المخصصة عند تغيير النظام
   useEffect(() => {
@@ -491,12 +632,22 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
         })
       }
     }
-  }, [selectedDietPlan, nutritionData])
+  }, [selectedDietPlan, nutritionData, selectedCalories])
 
   const handleDietPlanSelect = (planId) => {
     setIsLoading(true)
     setSelectedDietPlan(planId)
     setShowFullDetails(false) // إعادة تعيين عرض التفاصيل
+    
+    // حفظ السعرات المختارة للنظام الجديد
+    if (nutritionData) {
+      let newCalories = nutritionData.targetCalories
+      
+      // تطبيق التخفيض لجميع الأنظمة الغذائية
+      newCalories = Math.max(newCalories - 500, 1200)
+      
+      setSelectedCalories(newCalories)
+    }
     
     // محاكاة تحميل سريع لتحسين تجربة المستخدم
     setTimeout(() => {
@@ -604,6 +755,14 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
                     <span className="badge bg-success">
                       إجمالي السعرات: {customizedPlan.calories} سعرة
                     </span>
+                    {customizedPlan.calorieReduction > 0 && (
+                      <div className="mt-2">
+                        <small className="text-success">
+                          <i className="fas fa-arrow-down me-1"></i>
+                          تم تخفيض {customizedPlan.calorieReduction} سعرة من السعرات الأصلية ({customizedPlan.originalCalories} سعرة)
+                        </small>
+                      </div>
+                    )}
                   </div>
                 </div>
 

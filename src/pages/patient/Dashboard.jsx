@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useQuery } from 'react-query'
 import { useLanguage } from '../../hooks/useLanguage'
 import { useAuth } from '../../hooks/useAuth'
@@ -14,8 +14,19 @@ const PatientDashboard = () => {
   // Fetch patient data
   const { data: mealPlans, isLoading: plansLoading } = useQuery(
     'patient-meal-plans',
-    () => api.get(`/api/meals/meal-plans/?patient=${user?.id}`).then(res => res.data.results),
-    { enabled: !!user }
+    () => api.get(`/api/meals/meal-plans/?patient=${user?.id}`).then(res => {
+      console.log('🔄 Dashboard: Fetched meal plans:', res.data.results)
+      res.data.results.forEach((plan, index) => {
+        console.log(`Dashboard Plan ${index + 1} (ID: ${plan.id}): ${plan.title} - Start: ${plan.start_date}, End: ${plan.end_date} - Active: ${plan.is_active}`)
+      })
+      return res.data.results
+    }),
+    { 
+      enabled: !!user,
+      staleTime: 0, // Always fetch fresh data
+      cacheTime: 0, // Don't cache data
+      refetchOnWindowFocus: true
+    }
   )
 
   const { data: appointments, isLoading: appointmentsLoading } = useQuery(
@@ -32,22 +43,56 @@ const PatientDashboard = () => {
 
 
   const getCurrentPlans = () => {
-    if (!mealPlans) return []
+    console.log('🔄 getCurrentPlans called with mealPlans:', mealPlans)
+    if (!mealPlans) {
+      console.log('❌ No mealPlans data')
+      return []
+    }
+    
     const today = new Date()
     today.setHours(0, 0, 0, 0) // Reset time to start of day
+    console.log('📅 Today:', today.toISOString())
     
-    // Filter plans that are currently active (within date range and is_active = true)
+    // Filter plans that are active (is_active = true) and either:
+    // 1. Currently active (within date range)
+    // 2. Future plans (start date in the future)
     const activePlans = mealPlans.filter(plan => {
+      console.log(`🔍 Processing plan ${plan.id}: ${plan.title}`)
+      console.log(`  - is_active: ${plan.is_active}`)
+      console.log(`  - start_date: ${plan.start_date}`)
+      console.log(`  - end_date: ${plan.end_date}`)
+      
+      if (!plan.is_active) {
+        console.log(`  ❌ Plan ${plan.id} is not active`)
+        return false
+      }
+      
       const startDate = new Date(plan.start_date)
       const endDate = new Date(plan.end_date)
       startDate.setHours(0, 0, 0, 0)
       endDate.setHours(23, 59, 59, 999) // End of day
-      return startDate <= today && endDate >= today && plan.is_active
+      
+      console.log(`  - startDate: ${startDate.toISOString()}`)
+      console.log(`  - endDate: ${endDate.toISOString()}`)
+      
+      // Include plans that are currently active or will be active in the future
+      const isCurrentlyActive = startDate <= today && endDate >= today
+      const isFuturePlan = startDate >= today
+      const shouldInclude = isCurrentlyActive || isFuturePlan
+      
+      console.log(`  - isCurrentlyActive: ${isCurrentlyActive}`)
+      console.log(`  - isFuturePlan: ${isFuturePlan}`)
+      console.log(`  - shouldInclude: ${shouldInclude}`)
+      
+      return shouldInclude
     })
     
-    // Sort by creation date (newest first) and return only the first one (most recent)
-    const sortedPlans = activePlans.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    return sortedPlans.length > 0 ? [sortedPlans[0]] : []
+    console.log(`✅ Found ${activePlans.length} active plans`)
+    
+    // Sort by start date (earliest first) to prioritize current/future plans
+    const sortedPlans = activePlans.sort((a, b) => new Date(a.start_date) - new Date(b.start_date))
+    console.log('📋 Sorted plans:', sortedPlans.map(p => `${p.id}: ${p.title}`))
+    return sortedPlans
   }
 
   const getUpcomingAppointments = () => {
@@ -61,6 +106,75 @@ const PatientDashboard = () => {
 
   const getLatestMeasurement = () => {
     return measurements?.[0] || null
+  }
+
+  // دوال مساعدة لتحديد حالة الخطة
+  const getPlanStatus = (plan) => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    const startDate = new Date(plan.start_date)
+    const endDate = new Date(plan.end_date)
+    startDate.setHours(0, 0, 0, 0)
+    endDate.setHours(23, 59, 59, 999)
+    
+    if (startDate > today) {
+      return 'future' // مستقبلية
+    } else if (startDate <= today && endDate >= today) {
+      return 'active' // نشطة
+    } else {
+      return 'expired' // منتهية
+    }
+  }
+
+  const getPlanStatusText = (plan) => {
+    const status = getPlanStatus(plan)
+    switch (status) {
+      case 'future': return 'مستقبلية'
+      case 'active': return 'نشطة'
+      case 'expired': return 'منتهية'
+      default: return 'غير محددة'
+    }
+  }
+
+  const getPlanStatusBadgeClass = (plan) => {
+    const status = getPlanStatus(plan)
+    switch (status) {
+      case 'future': return 'bg-warning text-dark'
+      case 'active': return 'bg-success'
+      case 'expired': return 'bg-secondary'
+      default: return 'bg-light text-dark'
+    }
+  }
+
+  const getPlanStatusAlertClass = (plan) => {
+    const status = getPlanStatus(plan)
+    switch (status) {
+      case 'future': return 'alert-warning'
+      case 'active': return 'alert-success'
+      case 'expired': return 'alert-secondary'
+      default: return 'alert-info'
+    }
+  }
+
+  const getPlanStatusIcon = (plan) => {
+    const status = getPlanStatus(plan)
+    switch (status) {
+      case 'future': return 'fa-clock'
+      case 'active': return 'fa-check-circle'
+      case 'expired': return 'fa-times-circle'
+      default: return 'fa-info-circle'
+    }
+  }
+
+  const getPlanStatusTitle = (plan) => {
+    const status = getPlanStatus(plan)
+    switch (status) {
+      case 'future': return 'خطة الوجبات المستقبلية'
+      case 'active': return 'خطة الوجبات النشطة'
+      case 'expired': return 'خطة الوجبات المنتهية'
+      default: return 'خطة الوجبات'
+    }
   }
 
   if (plansLoading || appointmentsLoading || measurementsLoading) {
@@ -106,6 +220,37 @@ const PatientDashboard = () => {
         </div>
       </div>
 
+      {/* Payment Information Alert */}
+      <div className="row mb-4">
+        <div className="col-12">
+          <div className="alert alert-success">
+            <div className="d-flex align-items-center">
+              <i className="fas fa-credit-card me-3 fs-4"></i>
+              <div>
+                <h5 className="mb-2">
+                  <strong>معلومات الدفع الإلكتروني</strong>
+                </h5>
+                <p className="mb-2">للدفع الإلكتروني، يرجى استخدام رقم Qcard التالي:</p>
+                <div className="p-3 bg-white rounded border">
+                  <div className="d-flex align-items-center">
+                    <i className="fas fa-university text-success me-2"></i>
+                    <div>
+                      <strong className="text-success">Qcard - بنك الرافدين</strong>
+                      <br />
+                      <span className="text-primary fs-5 fw-bold">7113596071</span>
+                    </div>
+                  </div>
+                </div>
+                <small className="text-muted mt-2 d-block">
+                  <i className="fas fa-info-circle me-1"></i>
+                  يرجى استخدام رقم Qcard أعلاه للدفع الإلكتروني في حجز المواعيد
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Quick Stats */}
       <div className="row mb-4">
         <div className="col-md-3 mb-3">
@@ -118,6 +263,13 @@ const PatientDashboard = () => {
                   <small className="text-muted">خطط وجبات نشطة</small>
                 </div>
               </div>
+              {currentPlans.length > 0 && (
+                <div className="mt-2">
+                  <small className="text-muted">
+                    آخر خطة: {currentPlans[0]?.title || 'غير محدد'}
+                  </small>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -167,6 +319,91 @@ const PatientDashboard = () => {
         </div>
       </div>
 
+      {/* Quick Access Tools */}
+      <div className="row mb-4">
+        <div className="col-md-12 mb-3">
+          <div className="card text-center border-primary h-100">
+            <div className="card-body d-flex flex-column">
+              <i className="fas fa-utensils text-primary fs-1 mb-3"></i>
+              <h6 className="text-primary mb-2">خطط الوجبات</h6>
+              <p className="text-muted small mb-3">عرض خطط الوجبات المخصصة</p>
+              <a href="/meal-plans" className="btn btn-outline-primary btn-sm mt-auto">
+                <i className="fas fa-utensils me-1"></i>
+                عرض الخطط
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* All Meal Plans */}
+      {mealPlans && mealPlans.length > 0 && (
+        <div className="row mb-4">
+          <div className="col-12">
+            <div className="card">
+              <div className="card-header bg-primary text-white">
+                <h5 className="mb-0">
+                  <i className="fas fa-list me-2"></i>
+                  جميع خطط الوجبات
+                </h5>
+              </div>
+              <div className="card-body">
+                <div className="row">
+                  {mealPlans.map((plan) => (
+                    <div key={plan.id} className="col-md-6 mb-3">
+                      <div className={`card h-100 ${getPlanStatus(plan) === 'active' ? 'border-success' : getPlanStatus(plan) === 'future' ? 'border-warning' : 'border-secondary'}`}>
+                        <div className="card-body">
+                          <div className="d-flex justify-content-between align-items-start mb-2">
+                            <h6 className="card-title">{plan.title}</h6>
+                            <span className={`badge ${getPlanStatusBadgeClass(plan)}`}>
+                              {getPlanStatusText(plan)}
+                            </span>
+                          </div>
+                          <p className="card-text small text-muted">
+                            {plan.description?.substring(0, 100)}...
+                          </p>
+                          <div className="row text-center mb-2">
+                            <div className="col-4">
+                              <small className="text-muted">السعرات</small>
+                              <div className="fw-bold text-primary">{plan.target_calories} سعرة</div>
+                            </div>
+                            <div className="col-4">
+                              <small className="text-muted">البروتين</small>
+                              <div className="fw-bold text-success">{plan.target_protein}g</div>
+                            </div>
+                            <div className="col-4">
+                              <small className="text-muted">الكربوهيدرات</small>
+                              <div className="fw-bold text-warning">{plan.target_carbs || '--'}g</div>
+                            </div>
+                          </div>
+                          <p className="small text-muted mb-0">
+                            <i className="fas fa-calendar me-1"></i>
+                            من {new Date(plan.start_date).toLocaleDateString('ar-SA')} إلى {new Date(plan.end_date).toLocaleDateString('ar-SA')}
+                          </p>
+                        </div>
+                        <div className="card-footer">
+                          <div className="d-flex gap-2">
+                            <a href="/meal-plans" className="btn btn-primary btn-sm flex-fill">
+                              <i className="fas fa-eye me-2"></i>
+                              عرض التفاصيل
+                            </a>
+                            {getPlanStatus(plan) === 'active' && (
+                              <a href="/iraqi-nutrition/meal-planner" className="btn btn-success btn-sm">
+                                <i className="fas fa-utensils"></i>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Current Meal Plans */}
       {currentPlans.length > 0 && (
         <div className="row mb-4">
@@ -179,6 +416,51 @@ const PatientDashboard = () => {
                 </h5>
               </div>
               <div className="card-body">
+                {/* عرض تفاصيل الخطة الحالية */}
+                {currentPlans[0] && (
+                  <div className={`alert ${getPlanStatusAlertClass(currentPlans[0])} mb-4`}>
+                    <h6 className="alert-heading">
+                      <i className={`fas ${getPlanStatusIcon(currentPlans[0])} me-2`}></i>
+                      {getPlanStatusTitle(currentPlans[0])}
+                    </h6>
+                    <div className="row">
+                      <div className="col-md-6">
+                        <p className="mb-1"><strong>اسم الخطة:</strong> {currentPlans[0].title}</p>
+                        <p className="mb-1"><strong>الوصف:</strong> {currentPlans[0].description || 'لا يوجد وصف'}</p>
+                        <p className="mb-1"><strong>الفترة:</strong> من {new Date(currentPlans[0].start_date).toLocaleDateString('ar-SA')} إلى {new Date(currentPlans[0].end_date).toLocaleDateString('ar-SA')}</p>
+                        <p className="mb-1"><strong>الحالة:</strong> <span className={`badge ${getPlanStatusBadgeClass(currentPlans[0])}`}>{getPlanStatusText(currentPlans[0])}</span></p>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="row text-center">
+                          <div className="col-4">
+                            <div className="fw-bold text-primary">{currentPlans[0].target_calories}</div>
+                            <small className="text-muted">سعرة</small>
+                          </div>
+                          <div className="col-4">
+                            <div className="fw-bold text-success">{currentPlans[0].target_protein}g</div>
+                            <small className="text-muted">بروتين</small>
+                          </div>
+                          <div className="col-4">
+                            <div className="fw-bold text-warning">{currentPlans[0].target_carbs || '--'}g</div>
+                            <small className="text-muted">كربوهيدرات</small>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <hr />
+                    <div className="d-flex gap-2">
+                      <a href="/meal-plans" className="btn btn-primary btn-sm">
+                        <i className="fas fa-eye me-2"></i>
+                        عرض الخطة كاملة
+                      </a>
+                      <a href="/iraqi-nutrition/meal-planner" className="btn btn-success btn-sm">
+                        <i className="fas fa-utensils me-2"></i>
+                        مخطط الوجبات العراقية
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 <div className="row">
                   {currentPlans.slice(0, 3).map((plan) => (
                     <div key={plan.id} className="col-md-4 mb-3">
@@ -200,10 +482,59 @@ const PatientDashboard = () => {
                           </div>
                         </div>
                         <div className="card-footer">
-                          <a href="/meal-plans" className="btn btn-success btn-sm w-100">
-                            <i className="fas fa-eye me-2"></i>
-                            عرض التفاصيل
-                          </a>
+                        <div className="d-flex gap-2">
+                            <a href="/meal-plans" className="btn btn-success btn-sm flex-fill">
+                              <i className="fas fa-eye me-2"></i>
+                              عرض التفاصيل
+                            </a>
+                            <button 
+                              className="btn btn-outline-success btn-sm"
+                              onClick={() => {
+                                // عرض تفاصيل الخطة في modal أو قسم منفصل
+                                const planDetails = `
+                                  <div class="meal-plan-details">
+                                    <h5>${plan.title}</h5>
+                                    <p><strong>الوصف:</strong> ${plan.description || 'لا يوجد وصف'}</p>
+                                    <p><strong>السعرات المستهدفة:</strong> ${plan.target_calories} سعرة</p>
+                                    <p><strong>البروتين المستهدف:</strong> ${plan.target_protein}g</p>
+                                    <p><strong>الكربوهيدرات المستهدفة:</strong> ${plan.target_carbs || 'غير محدد'}g</p>
+                                    <p><strong>الدهون المستهدفة:</strong> ${plan.target_fat || 'غير محدد'}g</p>
+                                    <p><strong>من:</strong> ${new Date(plan.start_date).toLocaleDateString('ar-SA')}</p>
+                                    <p><strong>إلى:</strong> ${new Date(plan.end_date).toLocaleDateString('ar-SA')}</p>
+                                    <p><strong>الحالة:</strong> ${plan.is_active ? 'نشطة' : 'غير نشطة'}</p>
+                                  </div>
+                                `;
+                                // إنشاء modal لعرض التفاصيل
+                                const modal = document.createElement('div');
+                                modal.className = 'modal fade';
+                                modal.innerHTML = `
+                                  <div class="modal-dialog modal-lg">
+                                    <div class="modal-content">
+                                      <div class="modal-header">
+                                        <h5 class="modal-title">تفاصيل خطة الوجبات</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                      </div>
+                                      <div class="modal-body">
+                                        ${planDetails}
+                                      </div>
+                                      <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إغلاق</button>
+                                        <a href="/meal-plans" class="btn btn-primary">عرض كامل</a>
+                                      </div>
+                                    </div>
+                                  </div>
+                                `;
+                                document.body.appendChild(modal);
+                                const bsModal = new bootstrap.Modal(modal);
+                                bsModal.show();
+                                modal.addEventListener('hidden.bs.modal', () => {
+                                  document.body.removeChild(modal);
+                                });
+                              }}
+                            >
+                              <i className="fas fa-info-circle"></i>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -349,6 +680,8 @@ const PatientDashboard = () => {
           </div>
         </div>
       )}
+
+
 
       {/* Selected Meals */}
       <div className="row mb-4">

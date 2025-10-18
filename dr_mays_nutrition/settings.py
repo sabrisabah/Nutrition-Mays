@@ -70,7 +70,7 @@ ROOT_URLCONF = 'dr_mays_nutrition.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
+        'DIRS': [BASE_DIR / 'templates', BASE_DIR / 'dist'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -125,6 +125,7 @@ LOCALE_PATHS = [
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
+    BASE_DIR / 'dist',  # Include frontend build files
 ]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STORAGES = {
@@ -198,15 +199,3 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 AUTH_USER_MODEL = 'accounts.User'
 
-PAYMENT_PROVIDERS = {
-    'ZAINCASH': {
-        'MERCHANT_ID': config('ZAINCASH_MERCHANT_ID', default=''),
-        'SECRET_KEY': config('ZAINCASH_SECRET_KEY', default=''),
-        'API_URL': config('ZAINCASH_API_URL', default=''),
-    },
-    'ASIAHAWALA': {
-        'MERCHANT_ID': config('ASIAHAWALA_MERCHANT_ID', default=''),
-        'SECRET_KEY': config('ASIAHAWALA_SECRET_KEY', default=''),
-        'API_URL': config('ASIAHAWALA_API_URL', default=''),
-    },
-}

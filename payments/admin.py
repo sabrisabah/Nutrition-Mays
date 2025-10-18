@@ -33,7 +33,7 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ['payment_id', 'user', 'provider', 'amount', 'fee_amount', 'status', 'created_at']
+    list_display = ['payment_id', 'user', 'provider', 'amount', 'fee_amount', 'net_amount', 'status', 'created_at']
     list_filter = ['status', 'provider', 'created_at']
     search_fields = ['payment_id', 'user__username', 'provider_transaction_id']
     readonly_fields = ['payment_id', 'net_amount']

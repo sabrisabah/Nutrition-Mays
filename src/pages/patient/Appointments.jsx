@@ -22,7 +22,9 @@ const PatientAppointments = () => {
     preferred_date: '',
     preferred_time: '',
     chief_complaint: 'استشارة تغذية',
-    notes: ''
+    notes: '',
+    payment_method: '', // 'online' or 'visit'
+    phone_number: ''
   })
   const [availableTimeSlots, setAvailableTimeSlots] = useState([])
 
@@ -34,7 +36,9 @@ const PatientAppointments = () => {
       preferred_date: '',
       preferred_time: '',
       chief_complaint: 'استشارة تغذية',
-      notes: ''
+      notes: '',
+      payment_method: '',
+      phone_number: ''
     })
     setAvailableTimeSlots([])
   }
@@ -121,7 +125,9 @@ const PatientAppointments = () => {
           preferred_date: '',
           preferred_time: '',
           chief_complaint: 'استشارة تغذية',
-          notes: ''
+          notes: '',
+          payment_method: '',
+          phone_number: ''
         })
         setAvailableTimeSlots([])
       },
@@ -346,6 +352,14 @@ const PatientAppointments = () => {
       return
     }
 
+    // Validate payment method
+    if (!bookingForm.payment_method) {
+      toast.error('يرجى اختيار طريقة الدفع')
+      return
+    }
+
+    // No additional validation needed for online payment (Qcard info is displayed)
+
     // Check if date is allowed (Saturday to Thursday)
     if (!isDateAllowed(bookingForm.preferred_date)) {
       toast.error('التواريخ المتاحة من السبت إلى الخميس فقط')
@@ -373,7 +387,8 @@ const PatientAppointments = () => {
       scheduled_time: bookingForm.preferred_time,
       duration: 30, // Default duration in minutes
       chief_complaint: bookingForm.chief_complaint || '',
-      notes_from_patient: bookingForm.notes || ''
+      notes_from_patient: bookingForm.notes || '',
+      payment_method: bookingForm.payment_method
     }
 
     console.log('=== Booking Data Debug ===')
@@ -1190,7 +1205,59 @@ ${selectedAppointment.status === 'completed' && selectedAppointment.diagnosis ? 
                       </div>
                     </div>
                     
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">طريقة الدفع *</label>
+                        <select 
+                          className="form-select"
+                          name="payment_method"
+                          value={bookingForm.payment_method}
+                          onChange={handleBookingFormChange}
+                          required
+                        >
+                          <option value="">اختر طريقة الدفع</option>
+                          <option value="online">دفع إلكتروني</option>
+                          <option value="visit">دفع عند الزيارة</option>
+                        </select>
+                        <div className="form-text text-muted">
+                          <i className="fas fa-info-circle me-1"></i>
+                          اختر طريقة الدفع المناسبة لك
+                        </div>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Payment details - only show for online payment */}
+                  {bookingForm.payment_method === 'online' && (
+                    <div className="row">
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <div className="alert alert-info">
+                            <div className="d-flex align-items-center">
+                              <i className="fas fa-credit-card me-2"></i>
+                              <div>
+                                <strong>معلومات الدفع الإلكتروني</strong>
+                                <div className="mt-2 p-3 bg-white rounded border">
+                                  <div className="d-flex align-items-center">
+                                    <i className="fas fa-university text-success me-2"></i>
+                                    <div>
+                                      <strong className="text-success">Qcard - بنك الرافدين</strong>
+                                      <br />
+                                      <span className="text-primary fs-5 fw-bold">7113596071</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <small className="text-muted mt-2 d-block">
+                                  <i className="fas fa-info-circle me-1"></i>
+                                  يرجى استخدام رقم Qcard أعلاه للدفع الإلكتروني
+                                </small>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mb-3">
                     <label className="form-label">ملاحظات إضافية</label>

@@ -21,11 +21,43 @@ class FoodSerializer(serializers.ModelSerializer):
 
 class MealPlanTemplateSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    meals = serializers.SerializerMethodField()
     
     class Meta:
         model = MealPlanTemplate
         fields = '__all__'
         read_only_fields = ['created_by']
+    
+    def get_meals(self, obj):
+        meals = []
+        # البحث عن الوجبات المرتبطة بهذا القالب
+        # نستخدم MealPlan مع title يحتوي على Template ID
+        template_meals = Meal.objects.filter(
+            meal_plan__title__startswith=f'Template {obj.id}'
+        )
+        
+        for meal in template_meals:
+            meal_data = {
+                'id': meal.id,
+                'meal_type': meal.meal_type.name_ar if meal.meal_type else meal.meal_type.name,
+                'name': meal.name,
+                'ingredients': []
+            }
+            
+            for ingredient in meal.ingredients.all():
+                ingredient_data = {
+                    'food_name': ingredient.food.name_ar or ingredient.food.name,
+                    'amount': ingredient.amount,
+                    'calories': ingredient.food.calories_per_100g * (ingredient.amount / 100),
+                    'protein': ingredient.food.protein_per_100g * (ingredient.amount / 100),
+                    'carbs': ingredient.food.carbs_per_100g * (ingredient.amount / 100),
+                    'fat': ingredient.food.fat_per_100g * (ingredient.amount / 100),
+                    'fiber': ingredient.food.fiber_per_100g * (ingredient.amount / 100)
+                }
+                meal_data['ingredients'].append(ingredient_data)
+            
+            meals.append(meal_data)
+        return meals
 
 
 class MealTypeSerializer(serializers.ModelSerializer):
@@ -80,6 +112,16 @@ class MealPlanSerializer(serializers.ModelSerializer):
         model = MealPlan
         fields = '__all__'
         read_only_fields = ['doctor', 'delivered_at', 'acknowledged_at']
+    
+    def update(self, instance, validated_data):
+        print(f"🔍 MealPlanSerializer.update called with data:", validated_data)
+        print(f"🔍 Current instance data: start_date={instance.start_date}, end_date={instance.end_date}")
+        
+        # تحديث البيانات
+        updated_instance = super().update(instance, validated_data)
+        
+        print(f"✅ Updated instance data: start_date={updated_instance.start_date}, end_date={updated_instance.end_date}")
+        return updated_instance
 
 
 class MealPlanProgressSerializer(serializers.ModelSerializer):

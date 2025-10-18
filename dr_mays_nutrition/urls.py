@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import TemplateView
+from django.http import HttpResponse
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -11,6 +13,13 @@ urlpatterns = [
     path('api/payments/', include('payments.urls')),
     # path('api/notifications/', include('notifications.urls')),  # Temporarily commented out
     path('api/reports/', include('reports.urls')),
+    
+    # Health check endpoint
+    path('health/', lambda request: HttpResponse('OK', content_type='text/plain')),
+    
+    # Serve frontend for all other routes (SPA routing)
+    path('', TemplateView.as_view(template_name='index.html')),
+    path('<path:path>', TemplateView.as_view(template_name='index.html')),
 ]
 
 # Only serve static files in development

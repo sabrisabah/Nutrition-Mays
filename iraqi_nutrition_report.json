@@ -1,0 +1,250 @@
+{
+  "report_info": {
+    "title": "التقرير الغذائي العراقي الشامل",
+    "generated_at": "2025-10-15T17:44:31.459327+00:00",
+    "language": "العربية العراقية",
+    "version": "1.0"
+  },
+  "summary": {
+    "total_iraqi_foods": 7,
+    "total_meal_plans": 4,
+    "categories_count": 5,
+    "avg_calories_per_100g": 329.43,
+    "avg_protein_per_100g": 10.06,
+    "report_generated_at": "2025-10-15 17:44:31"
+  },
+  "foods_analysis": {
+    "total_foods": 7,
+    "categories": {
+      "الحبوب": 2,
+      "اللحوم": 1,
+      "الألبان": 2,
+      "التوابل": 1,
+      "الزيوت": 1
+    },
+    "nutrition_summary": {
+      "calories": {
+        "min": 59.0,
+        "max": 884.0,
+        "avg": 329.42857142857144
+      },
+      "protein": {
+        "min": 0.0,
+        "max": 25.6,
+        "avg": 10.057142857142859
+      },
+      "carbs": {
+        "min": 0.0,
+        "max": 76.3,
+        "avg": 25.485714285714288
+      },
+      "fat": {
+        "min": 0.3,
+        "max": 100.0,
+        "avg": 21.900000000000002
+      }
+    },
+    "top_foods": {
+      "highest_calories": [
+        {
+          "name": "زيت السمسم",
+          "calories": 884.0
+        },
+        {
+          "name": "طحين القمح",
+          "calories": 364.0
+        },
+        {
+          "name": "الهيل",
+          "calories": 311.0
+        },
+        {
+          "name": "لحم الضأن",
+          "calories": 294.0
+        },
+        {
+          "name": "الجبن الأبيض",
+          "calories": 264.0
+        }
+      ],
+      "highest_protein": [
+        {
+          "name": "لحم الضأن",
+          "protein": 25.6
+        },
+        {
+          "name": "الجبن الأبيض",
+          "protein": 11.0
+        },
+        {
+          "name": "الهيل",
+          "protein": 10.8
+        },
+        {
+          "name": "طحين القمح",
+          "protein": 10.3
+        },
+        {
+          "name": "اللبن",
+          "protein": 10.0
+        }
+      ],
+      "highest_fiber": [
+        {
+          "name": "الهيل",
+          "fiber": 28.0
+        },
+        {
+          "name": "طحين القمح",
+          "fiber": 2.7
+        },
+        {
+          "name": "أرز بسمتي",
+          "fiber": 0.4
+        },
+        {
+          "name": "لحم الضأن",
+          "fiber": 0.0
+        },
+        {
+          "name": "اللبن",
+          "fiber": 0.0
+        }
+      ],
+      "lowest_calories": [
+        {
+          "name": "اللبن",
+          "calories": 59.0
+        },
+        {
+          "name": "أرز بسمتي",
+          "calories": 130.0
+        },
+        {
+          "name": "الجبن الأبيض",
+          "calories": 264.0
+        },
+        {
+          "name": "لحم الضأن",
+          "calories": 294.0
+        },
+        {
+          "name": "الهيل",
+          "calories": 311.0
+        }
+      ]
+    }
+  },
+  "meal_plans_analysis": {
+    "total_plans": 4,
+    "active_plans": 0,
+    "completed_plans": 0,
+    "plans_details": [
+      {
+        "id": 49,
+        "title": "عينة - النظام الغذائي العراقي لإنقاص الوزن",
+        "status": "Meal Plan Delivered",
+        "total_nutrition": {
+          "calories": 1218.12,
+          "protein": 80.29,
+          "carbs": 20.59,
+          "fat": 91.12,
+          "fiber": 3.69,
+          "sugar": 0.0,
+          "sodium": 0.0,
+          "vitamin_a": 0.0,
+          "vitamin_c": 0.0,
+          "vitamin_d": 0.0,
+          "calcium": 0.0,
+          "iron": 0.0
+        },
+        "meals_count": 3,
+        "diet_plan": "low_carb"
+      },
+      {
+        "id": 48,
+        "title": "عينة - النظام الغذائي العراقي النباتي",
+        "status": "Meal Plan Delivered",
+        "total_nutrition": {
+          "calories": 1333.6,
+          "protein": 38.12,
+          "carbs": 210.33,
+          "fat": 38.64,
+          "fiber": 24.33,
+          "sugar": 0.0,
+          "sodium": 0.0,
+          "vitamin_a": 0.0,
+          "vitamin_c": 0.0,
+          "vitamin_d": 0.0,
+          "calcium": 0.0,
+          "iron": 0.0
+        },
+        "meals_count": 3,
+        "diet_plan": "vegetarian"
+      },
+      {
+        "id": 47,
+        "title": "عينة - النظام الغذائي العراقي عالي البروتين",
+        "status": "Meal Plan Delivered",
+        "total_nutrition": {
+          "calories": 2262.05,
+          "protein": 138.72,
+          "carbs": 166.79,
+          "fat": 112.96,
+          "fiber": 10.18,
+          "sugar": 0.0,
+          "sodium": 0.0,
+          "vitamin_a": 0.0,
+          "vitamin_c": 0.0,
+          "vitamin_d": 0.0,
+          "calcium": 0.0,
+          "iron": 0.0
+        },
+        "meals_count": 3,
+        "diet_plan": "high_protein"
+      },
+      {
+        "id": 46,
+        "title": "عينة - النظام الغذائي العراقي التقليدي",
+        "status": "Meal Plan Delivered",
+        "total_nutrition": {
+          "calories": 1971.2,
+          "protein": 93.98,
+          "carbs": 231.96,
+          "fat": 72.48,
+          "fiber": 16.33,
+          "sugar": 0.0,
+          "sodium": 0.0,
+          "vitamin_a": 0.0,
+          "vitamin_c": 0.0,
+          "vitamin_d": 0.0,
+          "calcium": 0.0,
+          "iron": 0.0
+        },
+        "meals_count": 3,
+        "diet_plan": "balanced"
+      }
+    ]
+  },
+  "recommendations": {
+    "general_recommendations": [
+      "تناول الأرز العراقي باعتدال لاحتوائه على كربوهيدرات عالية",
+      "الكباب العراقي مصدر ممتاز للبروتين",
+      "الدولمة العراقية غنية بالألياف والفيتامينات",
+      "تجنب الإفراط في الحلويات العراقية لاحتوائها على سكر عالي",
+      "الشاي العراقي منخفض السعرات ويمكن تناوله بانتظام"
+    ],
+    "nutritional_balance": [
+      "دمج البروتين من الكباب والمنسف مع الكربوهيدرات من الأرز",
+      "تناول الخضروات في الدولمة لتحقيق التوازن الغذائي",
+      "استخدام الجبن العراقي كمصدر للكالسيوم",
+      "التمر العراقي مصدر طبيعي للسكر والألياف"
+    ],
+    "health_considerations": [
+      "مراقبة الصوديوم في الأطعمة المملحة مثل الباجة",
+      "تناول المقلوبة باعتدال لاحتوائها على دهون",
+      "الاعتماد على اللبن العراقي للبروبيوتيك",
+      "تجنب الإفراط في البقلاوة والكنافة"
+    ]
+  }
+}

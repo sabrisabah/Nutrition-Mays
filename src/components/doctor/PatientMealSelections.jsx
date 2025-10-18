@@ -146,12 +146,17 @@ const PatientMealSelections = ({ patientId }) => {
                           <div key={idx} className="ingredient-item d-flex justify-content-between align-items-center mb-1 p-2 bg-light rounded">
                             <div className="d-flex align-items-center">
                               <i className="fas fa-circle text-success me-2" style={{ fontSize: '0.5rem' }}></i>
-                              <span className="fw-bold">{ingredient.food_name_ar || ingredient.food?.name_ar || ingredient.food?.name || ingredient.name}</span>
+                              <span className="fw-bold">
+                                {ingredient.food_name_ar || ingredient.food_name || ingredient.food?.name_ar || ingredient.food?.name || ingredient.name || 'مكون غير محدد'}
+                              </span>
                             </div>
                             <div className="text-muted">
                               <span className="badge bg-primary">
-                                {ingredient.amount || ingredient.quantity}g
+                                {ingredient.amount || ingredient.quantity || 0}g
                               </span>
+                              <small className="text-info ms-1">
+                                سعرات: {Math.round(ingredient.calories || ingredient.calories_per_100g || 0)} | بروتين: {Math.round(ingredient.protein || ingredient.protein_per_100g || 0)}g
+                              </small>
                               {ingredient.notes && (
                                 <small className="text-info ms-1">- {ingredient.notes}</small>
                               )}

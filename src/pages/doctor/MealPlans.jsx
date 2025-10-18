@@ -35,7 +35,7 @@ const DoctorMealPlans = () => {
     { value: 'health_maintenance', label: 'الحفاظ على الصحة' },
     { value: 'pregnant', label: 'حامل' },
     { value: 'breastfeeding', label: 'مرضع' },
-    { value: 'muscle_building', label: 'بناء كتلة عضلية' }
+    { value: 'muscle_building', label: 'بناء العضلات' }
   ]
 
   // قائمة الأنظمة الغذائية المتكاملة مع القيم الغذائية
@@ -133,10 +133,11 @@ const DoctorMealPlans = () => {
   // Edit meal plan
   const editMealPlan = (plan) => {
     console.log('Editing meal plan:', plan)
+    console.log('Plan dates:', { start_date: plan.start_date, end_date: plan.end_date })
     setEditingMealPlan(plan)
     
     // Initialize edit form with current values
-    setMealPlanForm({
+    const formData = {
       title: plan.title || '',
       description: plan.description || '',
       start_date: plan.start_date || '',
@@ -147,7 +148,10 @@ const DoctorMealPlans = () => {
       target_carbs: plan.target_carbs || '',
       target_fat: plan.target_fat || '',
       notes: plan.notes || ''
-    })
+    }
+    
+    console.log('Form data to be set:', formData)
+    setMealPlanForm(formData)
     
     // Set selected patient
     setSelectedPatient(plan.patient || '')
@@ -187,8 +191,20 @@ const DoctorMealPlans = () => {
   // Fetch meal plans
   const { data: mealPlans, isLoading: plansLoading } = useQuery(
     'doctor-meal-plans',
-    () => api.get('/api/meals/meal-plans/').then(res => res.data.results),
-    { enabled: !!user }
+    () => api.get('/api/meals/meal-plans/').then(res => {
+      console.log('🔄 Fetched meal plans:', res.data.results)
+      // تتبع التواريخ لكل خطة
+      res.data.results.forEach((plan, index) => {
+        console.log(`Plan ${index + 1} (ID: ${plan.id}): Start: ${plan.start_date}, End: ${plan.end_date}`)
+      })
+      return res.data.results
+    }),
+    { 
+      enabled: !!user,
+      staleTime: 0, // Always fetch fresh data
+      cacheTime: 0, // Don't cache data
+      refetchOnWindowFocus: true
+    }
   )
 
   // Fetch patients
@@ -466,9 +482,19 @@ const DoctorMealPlans = () => {
 
   // Update meal plan mutation
   const updateMealPlanMutation = useMutation(
-    (data) => api.put(`/api/meals/meal-plans/${editingMealPlan?.id}/`, data),
+    (data) => {
+      console.log('🔄 Sending update request to:', `/api/meals/meal-plans/${editingMealPlan?.id}/`)
+      console.log('🔄 Data being sent:', data)
+      return api.put(`/api/meals/meal-plans/${editingMealPlan?.id}/`, data)
+    },
     {
       onSuccess: (response, variables, context) => {
+        console.log('✅ Update successful, response:', response.data)
+        console.log('✅ Updated meal plan dates:', { 
+          start_date: response.data.start_date, 
+          end_date: response.data.end_date 
+        })
+        
         // إذا كان هناك callback مخصص (لإنشاء الوجبات)، لا تغلق النافذة بعد
         if (context?.onSuccess) {
           context.onSuccess()
@@ -479,12 +505,20 @@ const DoctorMealPlans = () => {
         toast.success('تم تحديث خطة الوجبات بنجاح')
         queryClient.invalidateQueries('doctor-meal-plans')
         queryClient.invalidateQueries('doctor-patients-list') // Refresh patients list
+        
+        // إعادة جلب البيانات فوراً
+        setTimeout(() => {
+          console.log('🔄 Refetching meal plans after update...')
+          queryClient.refetchQueries('doctor-meal-plans')
+        }, 100)
+        
         setShowEditModal(false)
         setEditingMealPlan(null)
         resetForm()
       },
       onError: (error) => {
-        console.error('Error updating meal plan:', error)
+        console.error('❌ Error updating meal plan:', error)
+        console.error('❌ Error response:', error.response?.data)
         toast.error('فشل في تحديث خطة الوجبات: ' + (error.response?.data?.error || error.message))
       }
     }
@@ -703,11 +737,17 @@ const DoctorMealPlans = () => {
     
     console.log('Submitting edit for meal plan:', editingMealPlan.id)
     console.log('Form data:', mealPlanForm)
+    console.log('Current meal plan dates:', { 
+      start_date: editingMealPlan.start_date, 
+      end_date: editingMealPlan.end_date 
+    })
     
     const data = {
       ...mealPlanForm,
       patient: selectedPatient
     }
+    
+    console.log('Data to be sent:', data)
     
     // إذا كان هناك نظام غذائي محدد، قم بإنشاء الوجبات تلقائياً بعد التحديث
     if (data.diet_plan) {
@@ -859,23 +899,22 @@ const DoctorMealPlans = () => {
 
     return meal.ingredients.reduce((total, ingredient) => {
       const amount = ingredient.amount || 0
-      const food = ingredient
       
-      if (!food) return total
+      if (!ingredient) return total
       
       const factor = amount / 100
-      const calories = parseFloat(food.calories_per_100g) || 0
-      const protein = parseFloat(food.protein_per_100g) || 0
-      const carbs = parseFloat(food.carbs_per_100g) || 0
-      const fat = parseFloat(food.fat_per_100g) || 0
-      const fiber = parseFloat(food.fiber_per_100g) || 0
+      const calories = parseFloat(ingredient.calories_per_100g) || 0
+      const protein = parseFloat(ingredient.protein_per_100g) || 0
+      const carbs = parseFloat(ingredient.carbs_per_100g) || 0
+      const fat = parseFloat(ingredient.fat_per_100g) || 0
+      const fiber = parseFloat(ingredient.fiber_per_100g) || 0
       
       return {
-        calories: total.calories + (calories * factor),
-        protein: total.protein + (protein * factor),
-        carbs: total.carbs + (carbs * factor),
-        fat: total.fat + (fat * factor),
-        fiber: total.fiber + (fiber * factor)
+        calories: Math.round((total.calories + (calories * factor)) * 100) / 100,
+        protein: Math.round((total.protein + (protein * factor)) * 100) / 100,
+        carbs: Math.round((total.carbs + (carbs * factor)) * 100) / 100,
+        fat: Math.round((total.fat + (fat * factor)) * 100) / 100,
+        fiber: Math.round((total.fiber + (fiber * factor)) * 100) / 100
       }
     }, {
       calories: 0,
@@ -1162,14 +1201,24 @@ const DoctorMealPlans = () => {
                         <td>
                           <div>
                             <div className="fw-bold">
-                              {mealPlanTitles.find(title => title.value === plan.title)?.label || plan.title}
+                              {mealPlanTitles.find(title => title.value === plan.title)?.label || 
+                               (plan.title === 'weight_loss' ? 'إنقاص وزن' : 
+                                plan.title === 'muscle_building' ? 'بناء العضلات' : plan.title)}
                             </div>
                             <small className="text-muted">{plan.description}</small>
                           </div>
                         </td>
                         <td>{plan.patient_name}</td>
-                        <td>{formatDateGregorian(plan.start_date)}</td>
-                        <td>{formatDateGregorian(plan.end_date)}</td>
+                        <td>
+                          {formatDateGregorian(plan.start_date)}
+                          <br />
+                          <small className="text-muted">Raw: {plan.start_date}</small>
+                        </td>
+                        <td>
+                          {formatDateGregorian(plan.end_date)}
+                          <br />
+                          <small className="text-muted">Raw: {plan.end_date}</small>
+                        </td>
                         <td>
                           <span className={`badge ${plan.is_active ? 'bg-success' : 'bg-secondary'}`}>
                             {plan.is_active ? 'نشط' : 'غير نشط'}
@@ -1209,6 +1258,16 @@ const DoctorMealPlans = () => {
                               title="تعديل الخطة"
                             >
                               <i className="fas fa-edit"></i>
+                            </button>
+                            <button 
+                              className="btn btn-sm btn-outline-warning"
+                              onClick={() => {
+                                // توجيه إلى نظام الوجبات العراقية
+                                window.location.href = `/iraqi-nutrition/meal-planner?patient=${plan.patient}&plan=${plan.id}`
+                              }}
+                              title="تعديل في نظام الوجبات العراقية"
+                            >
+                              <i className="fas fa-utensils"></i>
                             </button>
                             <button 
                               className="btn btn-sm btn-outline-info"

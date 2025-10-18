@@ -1,4 +1,4 @@
-from rest_framework import generics, status, permissions, serializers
+from rest_framework import generics, status, permissions, serializers, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
@@ -324,3 +324,70 @@ class DoctorPatientsView(generics.ListAPIView):
         elif self.request.user.role == 'admin':
             return User.objects.filter(role='patient').order_by('-id')
         return User.objects.none()
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for User model operations.
+    Provides CRUD operations for users with appropriate permissions.
+    """
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        Filter queryset based on user role and permissions.
+        """
+        user = self.request.user
+        
+        if user.role == 'admin':
+            # Admin can see all users
+            return User.objects.all().order_by('-id')
+        elif user.role == 'doctor':
+            # Doctors can see their patients
+            from bookings.models import Appointment
+            patient_ids = Appointment.objects.filter(doctor=user).values_list('patient', flat=True).distinct()
+            return User.objects.filter(id__in=patient_ids, role='patient').order_by('-id')
+        else:
+            # Patients can only see themselves
+            return User.objects.filter(id=user.id)
+    
+    def get_permissions(self):
+        """
+        Set permissions based on action.
+        """
+        if self.action == 'create':
+            permission_classes = [permissions.AllowAny]
+        elif self.action in ['list', 'retrieve']:
+            permission_classes = [permissions.IsAuthenticated]
+        else:
+            permission_classes = [permissions.IsAuthenticated]
+        
+        return [permission() for permission in permission_classes]
+    
+    def perform_create(self, serializer):
+        """
+        Handle user creation.
+        """
+        user = serializer.save()
+        token, created = Token.objects.get_or_create(user=user)
+        return user
+    
+    def perform_update(self, serializer):
+        """
+        Handle user updates.
+        """
+        # Only allow users to update their own profile unless they're admin
+        if self.request.user.role != 'admin' and serializer.instance != self.request.user:
+            raise permissions.PermissionDenied("You can only update your own profile")
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        """
+        Handle user deletion.
+        """
+        # Only allow admin to delete users
+        if self.request.user.role != 'admin':
+            raise permissions.PermissionDenied("Only admins can delete users")
+        instance.delete()

@@ -9,11 +9,16 @@ from .models import (
     FoodCategory, Food, MealPlanTemplate, MealPlan, MealType,
     Meal, MealIngredient, MealPlanProgress, Recipe, RecipeIngredient
 )
+from accounts.models import User
 from .serializers import (
     FoodCategorySerializer, FoodSerializer, MealPlanTemplateSerializer,
     MealPlanSerializer, MealTypeSerializer, MealSerializer,
     MealIngredientSerializer, MealPlanProgressSerializer,
     RecipeSerializer, RecipeIngredientSerializer, MealPlanCreateSerializer
+)
+from .nutrition_calculator import (
+    IraqiNutritionCalculator, calculate_meal_nutrition_iraqi,
+    calculate_recipe_nutrition_iraqi, calculate_daily_plan_nutrition_iraqi
 )
 
 
@@ -104,6 +109,12 @@ class MealPlanDetailView(generics.RetrieveUpdateDestroyAPIView):
         elif self.request.user.role in ['admin', 'accountant']:
             return MealPlan.objects.all()
         return MealPlan.objects.none()
+    
+    def update(self, request, *args, **kwargs):
+        print(f"🔍 Updating meal plan {kwargs.get('pk')} with data:", request.data)
+        response = super().update(request, *args, **kwargs)
+        print(f"✅ Meal plan updated successfully: {response.data}")
+        return response
 
 
 class PatientMealPlanListView(generics.ListAPIView):
@@ -776,7 +787,12 @@ def add_suggested_ingredients(suggested_meal, meal_type_name, foods):
                     'food_name_ar': protein.name_ar,
                     'amount': 100,
                     'unit': 'g',
-                    'notes': 'مطبوخ'
+                    'notes': 'مطبوخ',
+                    'calories_per_100g': protein.calories_per_100g or 0,
+                    'protein_per_100g': protein.protein_per_100g or 0,
+                    'carbs_per_100g': protein.carbs_per_100g or 0,
+                    'fat_per_100g': protein.fat_per_100g or 0,
+                    'fiber_per_100g': protein.fiber_per_100g or 0
                 })
             
             if 'vegetables' in foods and foods['vegetables']:
@@ -787,7 +803,12 @@ def add_suggested_ingredients(suggested_meal, meal_type_name, foods):
                     'food_name_ar': vegetable.name_ar,
                     'amount': 150,
                     'unit': 'g',
-                    'notes': 'طازج'
+                    'notes': 'طازج',
+                    'calories_per_100g': vegetable.calories_per_100g or 0,
+                    'protein_per_100g': vegetable.protein_per_100g or 0,
+                    'carbs_per_100g': vegetable.carbs_per_100g or 0,
+                    'fat_per_100g': vegetable.fat_per_100g or 0,
+                    'fiber_per_100g': vegetable.fiber_per_100g or 0
                 })
             
             if 'fats' in foods and foods['fats']:
@@ -798,7 +819,12 @@ def add_suggested_ingredients(suggested_meal, meal_type_name, foods):
                     'food_name_ar': fat.name_ar,
                     'amount': 10,
                     'unit': 'g',
-                    'notes': 'للطبخ'
+                    'notes': 'للطبخ',
+                    'calories_per_100g': fat.calories_per_100g or 0,
+                    'protein_per_100g': fat.protein_per_100g or 0,
+                    'carbs_per_100g': fat.carbs_per_100g or 0,
+                    'fat_per_100g': fat.fat_per_100g or 0,
+                    'fiber_per_100g': fat.fiber_per_100g or 0
                 })
         
         elif 'lunch' in meal_type_name.lower():
@@ -811,7 +837,12 @@ def add_suggested_ingredients(suggested_meal, meal_type_name, foods):
                     'food_name_ar': protein.name_ar,
                     'amount': 150,
                     'unit': 'g',
-                    'notes': 'مطبوخ'
+                    'notes': 'مطبوخ',
+                    'calories_per_100g': protein.calories_per_100g or 0,
+                    'protein_per_100g': protein.protein_per_100g or 0,
+                    'carbs_per_100g': protein.carbs_per_100g or 0,
+                    'fat_per_100g': protein.fat_per_100g or 0,
+                    'fiber_per_100g': protein.fiber_per_100g or 0
                 })
             
             if 'vegetables' in foods and foods['vegetables']:
@@ -822,7 +853,12 @@ def add_suggested_ingredients(suggested_meal, meal_type_name, foods):
                     'food_name_ar': vegetable.name_ar,
                     'amount': 200,
                     'unit': 'g',
-                    'notes': 'طازج'
+                    'notes': 'طازج',
+                    'calories_per_100g': vegetable.calories_per_100g or 0,
+                    'protein_per_100g': vegetable.protein_per_100g or 0,
+                    'carbs_per_100g': vegetable.carbs_per_100g or 0,
+                    'fat_per_100g': vegetable.fat_per_100g or 0,
+                    'fiber_per_100g': vegetable.fiber_per_100g or 0
                 })
             
             if 'fats' in foods and foods['fats']:
@@ -833,7 +869,12 @@ def add_suggested_ingredients(suggested_meal, meal_type_name, foods):
                     'food_name_ar': fat.name_ar,
                     'amount': 15,
                     'unit': 'g',
-                    'notes': 'للطبخ'
+                    'notes': 'للطبخ',
+                    'calories_per_100g': fat.calories_per_100g or 0,
+                    'protein_per_100g': fat.protein_per_100g or 0,
+                    'carbs_per_100g': fat.carbs_per_100g or 0,
+                    'fat_per_100g': fat.fat_per_100g or 0,
+                    'fiber_per_100g': fat.fiber_per_100g or 0
                 })
         
         elif 'dinner' in meal_type_name.lower():
@@ -1230,8 +1271,14 @@ class PatientMealSelectionsView(APIView):
             # Get date filter if provided
             date_filter = request.GET.get('date')
             
-            # Import the model
-            from .models import PatientMealSelection
+            # Import the models
+            from .models import PatientMealSelection, MealPlan, Meal
+            
+            # Get patient's active meal plans
+            active_meal_plans = MealPlan.objects.filter(
+                patient_id=patient_id,
+                is_active=True
+            )
             
             # Query actual selections from database
             selections = PatientMealSelection.objects.filter(patient_id=patient_id)
@@ -1263,6 +1310,80 @@ class PatientMealSelectionsView(APIView):
                     'notes': selection.notes,
                     'is_confirmed': selection.is_confirmed
                 })
+            
+            # Also get meals from active meal plans (doctor-selected meals)
+            for meal_plan in active_meal_plans:
+                # Check if the meal plan covers the selected date
+                if date_filter:
+                    from datetime import datetime
+                    try:
+                        filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+                        meal_plan_start = meal_plan.start_date
+                        meal_plan_end = meal_plan.end_date
+                        
+                        # Check if the date is within the meal plan period
+                        if not (meal_plan_start <= filter_date <= meal_plan_end):
+                            continue
+                    except ValueError:
+                        pass  # Invalid date format, ignore filter
+                
+                # Get meals from this meal plan
+                meals = Meal.objects.filter(meal_plan=meal_plan)
+                
+                for meal in meals:
+                    # Calculate nutrition for the meal
+                    total_calories = 0
+                    total_protein = 0
+                    total_carbs = 0
+                    total_fat = 0
+                    ingredients_data = []
+                    
+                    for ingredient in meal.ingredients.all():
+                        # Calculate nutrition based on amount
+                        amount = ingredient.amount
+                        food = ingredient.food
+                        
+                        calories = (food.calories_per_100g * amount / 100) if food.calories_per_100g else 0
+                        protein = (food.protein_per_100g * amount / 100) if food.protein_per_100g else 0
+                        carbs = (food.carbs_per_100g * amount / 100) if food.carbs_per_100g else 0
+                        fat = (food.fat_per_100g * amount / 100) if food.fat_per_100g else 0
+                        
+                        total_calories += calories
+                        total_protein += protein
+                        total_carbs += carbs
+                        total_fat += fat
+                        
+                        ingredients_data.append({
+                            'food_id': food.id,
+                            'food_name_ar': food.name_ar,
+                            'food_name': food.name,
+                            'amount': amount,
+                            'unit': ingredient.unit,
+                            'calories_per_100g': food.calories_per_100g,
+                            'protein_per_100g': food.protein_per_100g,
+                            'carbs_per_100g': food.carbs_per_100g,
+                            'fat_per_100g': food.fat_per_100g,
+                            'notes': ingredient.notes
+                        })
+                    
+                    # Add meal to selections data
+                    selections_data.append({
+                        'id': f"meal_{meal.id}",
+                        'meal_name': meal.name,
+                        'meal_type': meal.meal_type.name if meal.meal_type else 'unknown',
+                        'selected_at': meal_plan.created_at.isoformat(),
+                        'nutrition_info': {
+                            'calories': round(total_calories, 1),
+                            'protein': round(total_protein, 1),
+                            'carbs': round(total_carbs, 1),
+                            'fat': round(total_fat, 1)
+                        },
+                        'ingredients': ingredients_data,
+                        'notes': meal.description or '',
+                        'is_confirmed': True,
+                        'is_doctor_selected': True,
+                        'meal_plan_title': meal_plan.title
+                    })
             
             return Response(selections_data)
             
@@ -1337,3 +1458,288 @@ class PatientMealSelectionsView(APIView):
             
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ===== حاسبة القيم الغذائية العراقية =====
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def calculate_meal_nutrition_iraqi_api(request, meal_id):
+    """حساب القيم الغذائية لوجبة بالطريقة العراقية"""
+    try:
+        result = calculate_meal_nutrition_iraqi(meal_id)
+        if 'error' in result:
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+        return Response(result)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def calculate_recipe_nutrition_iraqi_api(request, recipe_id):
+    """حساب القيم الغذائية لوصفة بالطريقة العراقية"""
+    try:
+        result = calculate_recipe_nutrition_iraqi(recipe_id)
+        if 'error' in result:
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+        return Response(result)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def calculate_daily_plan_nutrition_iraqi_api(request, meal_plan_id):
+    """حساب القيم الغذائية للخطة اليومية بالطريقة العراقية"""
+    try:
+        result = calculate_daily_plan_nutrition_iraqi(meal_plan_id)
+        if 'error' in result:
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+        return Response(result)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def calculate_custom_nutrition_iraqi_api(request):
+    """حساب القيم الغذائية لقائمة مخصصة من الأطعمة"""
+    try:
+        foods_data = request.data.get('foods', [])
+        if not foods_data:
+            return Response({'error': 'لم يتم توفير قائمة الأطعمة'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        calculator = IraqiNutritionCalculator()
+        result = calculator.calculate_custom_nutrition(foods_data)
+        
+        return Response(result)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def search_iraqi_foods_api(request):
+    """البحث عن الأطعمة العراقية"""
+    try:
+        query = request.GET.get('q', '')
+        if not query:
+            return Response({'error': 'يرجى إدخال كلمة البحث'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        calculator = IraqiNutritionCalculator()
+        foods = calculator.search_iraqi_foods(query)
+        
+        serializer = FoodSerializer(foods, many=True)
+        return Response({
+            'foods': serializer.data,
+            'count': len(foods),
+            'query': query
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def get_food_suggestions_iraqi_api(request):
+    """اقتراحات الأطعمة العراقية"""
+    try:
+        category = request.GET.get('category', None)
+        calculator = IraqiNutritionCalculator()
+        foods = calculator.get_food_suggestions(category)
+        
+        serializer = FoodSerializer(foods, many=True)
+        return Response({
+            'foods': serializer.data,
+            'count': len(foods),
+            'category': category
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def get_nutrition_summary_iraqi_api(request):
+    """ملخص القيم الغذائية بالعربية العراقية"""
+    try:
+        foods_data = request.GET.get('foods', '[]')
+        
+        import json
+        foods_list = json.loads(foods_data)
+        
+        calculator = IraqiNutritionCalculator()
+        result = calculator.calculate_custom_nutrition(foods_list)
+        
+        summary = calculator.get_nutrition_summary_arabic(result['total_nutrition'])
+        
+        return Response({
+            'summary': summary,
+            'total_nutrition': result['total_nutrition'],
+            'total_nutrition_arabic': result['total_nutrition_arabic'],
+            'foods_count': result['foods_count']
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def compare_nutrition_targets_api(request, meal_plan_id):
+    """مقارنة القيم الغذائية الفعلية مع الأهداف"""
+    try:
+        result = calculate_daily_plan_nutrition_iraqi(meal_plan_id)
+        if 'error' in result:
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+
+        comparison = result.get('comparison', {})
+
+        return Response({
+            'meal_plan_title': result['plan_title'],
+            'actual_nutrition': result['total_nutrition'],
+            'target_nutrition': result['targets'],
+            'comparison': comparison,
+            'overall_status': _get_overall_status(comparison)
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def get_meal_templates_api(request):
+    """الحصول على قوالب الوجبات اليومية"""
+    try:
+        templates = MealPlanTemplate.objects.filter(is_public=True)
+        serializer = MealPlanTemplateSerializer(templates, many=True)
+        return Response({
+            'templates': serializer.data,
+            'count': len(templates)
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def get_meal_template_details_api(request, template_id):
+    """الحصول على تفاصيل قالب وجبات معين"""
+    try:
+        template = MealPlanTemplate.objects.get(id=template_id, is_public=True)
+        serializer = MealPlanTemplateSerializer(template)
+        return Response(serializer.data)
+    except MealPlanTemplate.DoesNotExist:
+        return Response({'error': 'القالب غير موجود'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def get_patients_list_api(request):
+    """الحصول على قائمة المرضى للطبيب"""
+    try:
+        from accounts.models import User
+        patients = User.objects.filter(role='patient', is_active=True)
+        patients_data = []
+        for patient in patients:
+            patients_data.append({
+                'id': patient.id,
+                'name': patient.get_full_name() or patient.username,
+                'email': patient.email,
+                'phone': patient.phone,
+                'date_of_birth': patient.date_of_birth
+            })
+        return Response({
+            'patients': patients_data,
+            'count': len(patients_data)
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def create_meal_plan_from_template_api(request):
+    """إنشاء خطة وجبات من قالب"""
+    try:
+        template_id = request.data.get('template_id')
+        patient_id = request.data.get('patient_id')
+        start_date = request.data.get('start_date')
+        
+        if not all([template_id, patient_id, start_date]):
+            return Response({
+                'error': 'يرجى توفير معرف القالب ومعرف المريض وتاريخ البداية'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # إنشاء خطة وجبات جديدة من القالب
+        template = MealPlanTemplate.objects.get(id=template_id, is_public=True)
+        patient = User.objects.get(id=patient_id, role='patient')
+        
+        # الحصول على طبيب افتراضي إذا لم يكن المستخدم مسجل دخول
+        doctor = request.user if request.user.is_authenticated else User.objects.filter(is_staff=True).first()
+        
+        meal_plan = MealPlan.objects.create(
+            patient=patient,
+            doctor=doctor,
+            title=f"{template.name_ar} - {start_date}",
+            template=template,
+            start_date=start_date,
+            end_date=start_date,  # خطة ليوم واحد
+            target_calories=template.target_calories,
+            target_protein=template.target_protein_percentage,
+            target_carbs=template.target_carbs_percentage,
+            target_fat=template.target_fat_percentage,
+            status='active'
+        )
+        
+        # نسخ الوجبات من القالب
+        # البحث عن الوجبات المرتبطة بهذا القالب
+        template_meals = Meal.objects.filter(
+            meal_plan__title__startswith=f'Template {template.id}'
+        )
+        
+        for template_meal in template_meals:
+            meal = Meal.objects.create(
+                meal_plan=meal_plan,
+                meal_type=template_meal.meal_type,
+                name=template_meal.name,
+                day_of_week=1
+            )
+            
+            # نسخ المكونات
+            for ingredient in template_meal.ingredients.all():
+                MealIngredient.objects.create(
+                    meal=meal,
+                    food=ingredient.food,
+                    amount=ingredient.amount
+                )
+        
+        serializer = MealPlanSerializer(meal_plan)
+        return Response({
+            'message': 'تم إنشاء خطة الوجبات بنجاح',
+            'meal_plan': serializer.data
+        })
+        
+    except MealPlanTemplate.DoesNotExist:
+        return Response({'error': 'القالب غير موجود'}, status=status.HTTP_404_NOT_FOUND)
+    except User.DoesNotExist:
+        return Response({'error': 'المريض غير موجود'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _get_overall_status(comparison):
+    """تحديد الحالة العامة للخطة الغذائية"""
+    if not comparison:
+        return {'status': 'غير محدد', 'color': 'gray'}
+    
+    statuses = [item['status'] for item in comparison.values()]
+    
+    if all(status == 'ممتاز' for status in statuses):
+        return {'status': 'ممتاز', 'color': 'green'}
+    elif all(status in ['ممتاز', 'جيد'] for status in statuses):
+        return {'status': 'جيد', 'color': 'yellow'}
+    else:
+        return {'status': 'يحتاج تحسين', 'color': 'red'}

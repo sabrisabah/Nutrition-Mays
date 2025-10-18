@@ -352,8 +352,8 @@ const DoctorPatientProfile = () => {
     const tdee = Math.round(bmr * multiplier)
 
     // حساب السعرات المستهدفة حسب الهدف
-    // طرح 500 سعرة حرارية من إجمالي استهلاك الطاقة
-    const targetCalories = Math.round(tdee - 500)
+    // استخدام إجمالي استهلاك الطاقة كقيمة أساسية (سيتم تخفيضها عند اختيار النظام الغذائي)
+    const targetCalories = Math.round(tdee)
 
     // حساب البروتين
     const proteinPerKg = {
@@ -486,8 +486,8 @@ const DoctorPatientProfile = () => {
     const tdee = Math.round(bmr * multiplier)
 
     // حساب السعرات المستهدفة حسب الهدف
-    // طرح 500 سعرة حرارية من إجمالي استهلاك الطاقة
-    const targetCalories = Math.round(tdee - 500)
+    // استخدام إجمالي استهلاك الطاقة كقيمة أساسية (سيتم تخفيضها عند اختيار النظام الغذائي)
+    const targetCalories = Math.round(tdee)
 
     // حساب البروتين
     const proteinPerKg = {

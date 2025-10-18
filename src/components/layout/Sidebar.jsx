@@ -24,6 +24,7 @@ const Sidebar = () => {
           { path: '/doctor/profile', icon: 'fas fa-user', label: t('profile') },
           { path: '/doctor/patients', icon: 'fas fa-users', label: t('patients') },
           { path: '/doctor/meal-plans', icon: 'fas fa-utensils', label: t('meal_plans') },
+          { path: '/iraqi-nutrition/meal-planner', icon: 'fas fa-calendar-day', label: 'مخطط الوجبات العراقية' },
         ]
       
       case 'admin':
@@ -33,6 +34,7 @@ const Sidebar = () => {
           { path: '/admin/doctors', icon: 'fas fa-user-md', label: t('doctors') },
           { path: '/admin/payments', icon: 'fas fa-credit-card', label: t('payments') },
           { path: '/admin/reports', icon: 'fas fa-chart-bar', label: t('reports') },
+          { path: '/iraqi-nutrition/meal-planner', icon: 'fas fa-calendar-day', label: 'مخطط الوجبات العراقية' },
           { path: '/admin/settings', icon: 'fas fa-cog', label: t('settings') },
         ]
       

@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useLanguage } from '../../hooks/useLanguage'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
@@ -7,6 +7,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 const RegisterPage = () => {
   const { register, loading, user } = useAuth()
   const { t, language } = useLanguage()
+  const navigate = useNavigate()
   const [formData, setFormData] = useState({
     username: '',
     first_name: '',
@@ -22,11 +23,25 @@ const RegisterPage = () => {
     goal: ''
   })
   const [errors, setErrors] = useState({})
+  const [registrationSuccess, setRegistrationSuccess] = useState(false)
+  const [redirectCountdown, setRedirectCountdown] = useState(3)
 
   // Redirect if already logged in
   if (user) {
     return <Navigate to="/dashboard" />
   }
+
+  // Countdown effect for redirect
+  useEffect(() => {
+    if (registrationSuccess && redirectCountdown > 0) {
+      const timer = setTimeout(() => {
+        setRedirectCountdown(redirectCountdown - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
+    } else if (registrationSuccess && redirectCountdown === 0) {
+      navigate('/login')
+    }
+  }, [registrationSuccess, redirectCountdown, navigate])
 
   const handleChange = (e) => {
     setFormData({
@@ -45,6 +60,7 @@ const RegisterPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setErrors({})
+    setRegistrationSuccess(false)
     
     console.log('Submitting registration form:', formData)
     
@@ -52,7 +68,10 @@ const RegisterPage = () => {
       const result = await register(formData)
       console.log('Registration result:', result)
       
-      if (!result.success && result.error) {
+      if (result.success) {
+        setRegistrationSuccess(true)
+        setRedirectCountdown(3)
+      } else if (result.error) {
         setErrors(result.error)
       }
     } catch (error) {
@@ -88,6 +107,31 @@ const RegisterPage = () => {
                       {errors.general.map((error, index) => (
                         <div key={index}>{error}</div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Success Message with Countdown */}
+                  {registrationSuccess && (
+                    <div className="alert alert-success mb-3 text-center">
+                      <div className="d-flex align-items-center justify-content-center">
+                        <i className="fas fa-check-circle me-2"></i>
+                        <div>
+                          <strong>تم إنشاء الحساب بنجاح!</strong>
+                          <br />
+                          <small className="text-muted">
+                            سيتم توجيهك لصفحة تسجيل الدخول خلال {redirectCountdown} ثانية...
+                          </small>
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <button 
+                          type="button" 
+                          className="btn btn-outline-success btn-sm"
+                          onClick={() => navigate('/login')}
+                        >
+                          تسجيل الدخول الآن
+                        </button>
+                      </div>
                     </div>
                   )}
                   <div className="row">
@@ -317,7 +361,7 @@ const RegisterPage = () => {
                   <button
                     type="submit"
                     className="btn btn-success w-100 py-2 fw-bold"
-                    disabled={loading}
+                    disabled={loading || registrationSuccess}
                   >
                     {loading ? (
                       <>
@@ -326,15 +370,24 @@ const RegisterPage = () => {
                           {language === 'ar' ? 'جاري إنشاء الحساب...' : 'Creating account...'}
                         </span>
                       </>
+                    ) : registrationSuccess ? (
+                      <>
+                        <i className="fas fa-check me-2"></i>
+                        {language === 'ar' ? 'تم إنشاء الحساب!' : 'Account Created!'}
+                      </>
                     ) : (
                       t('register')
                     )}
                   </button>
                   
-                  {loading && (
+                  {(loading || registrationSuccess) && (
                     <div className="text-center mt-2">
                       <small className="text-muted">
-                        {language === 'ar' ? 'يرجى الانتظار، قد يستغرق هذا بضع ثوانٍ...' : 'Please wait, this may take a few seconds...'}
+                        {loading ? (
+                          language === 'ar' ? 'يرجى الانتظار، قد يستغرق هذا بضع ثوانٍ...' : 'Please wait, this may take a few seconds...'
+                        ) : (
+                          language === 'ar' ? 'سيتم توجيهك لصفحة تسجيل الدخول...' : 'You will be redirected to login page...'
+                        )}
                       </small>
                     </div>
                   )}

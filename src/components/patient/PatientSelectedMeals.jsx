@@ -119,28 +119,39 @@ const PatientSelectedMeals = () => {
                   {/* عرض المكونات */}
                   {(() => {
                     console.log('Rendering selection:', selection.meal_name, 'Ingredients:', selection.ingredients)
-                    return selection.ingredients && selection.ingredients.length > 0 ? (
+                    // التحقق من وجود المكونات وتنظيف البيانات
+                    const validIngredients = selection.ingredients?.filter(ingredient => 
+                      ingredient && (ingredient.food_name_ar || ingredient.food_name || ingredient.name)
+                    ) || []
+                    
+                    return validIngredients.length > 0 ? (
                       <div className="ingredients-section mb-3">
                         <h6 className="text-primary mb-2">
                           <i className="fas fa-shopping-basket me-1"></i>
                           المكونات:
                         </h6>
                         <div className="ingredients-list">
-                          {selection.ingredients.map((ingredient, idx) => {
+                          {validIngredients.map((ingredient, idx) => {
                             console.log('Rendering ingredient:', ingredient)
+                            // التعامل مع البيانات المختلفة من الـ API
+                            const ingredientName = ingredient.food_name_ar || ingredient.food_name || ingredient.name || 'مكون غير محدد'
+                            const ingredientAmount = ingredient.amount || ingredient.quantity || 0
+                            const ingredientCalories = ingredient.calories || ingredient.calories_per_100g || 0
+                            const ingredientProtein = ingredient.protein || ingredient.protein_per_100g || 0
+                            
                             return (
                               <div key={idx} className="ingredient-item d-flex justify-content-between align-items-center mb-1 p-2 bg-light rounded">
                                 <div className="d-flex align-items-center">
                                   <i className="fas fa-circle text-success me-2" style={{ fontSize: '0.5rem' }}></i>
-                                  <span className="fw-bold">{ingredient.name}</span>
+                                  <span className="fw-bold">{ingredientName}</span>
                                 </div>
                                 <div className="text-muted">
                                   <span className="badge bg-primary">
-                                    {ingredient.amount}g
+                                    {ingredientAmount}g
                                   </span>
-                                  {ingredient.notes && (
-                                    <small className="text-info ms-1">- {ingredient.notes}</small>
-                                  )}
+                                  <small className="text-info ms-1">
+                                    سعرات: {ingredientCalories} | بروتين: {ingredientProtein}g
+                                  </small>
                                 </div>
                               </div>
                             )
@@ -155,34 +166,62 @@ const PatientSelectedMeals = () => {
                     )
                   })()}
 
-                  {selection.nutrition_info && (
-                    <div className="nutrition-summary">
-                      <h6 className="text-success mb-2">
-                        <i className="fas fa-chart-pie me-1"></i>
-                        القيم الغذائية:
-                      </h6>
-                      <div className="row text-center">
-                        <div className="col-4">
-                          <div className="p-2 bg-primary text-white rounded">
-                            <div className="fw-bold">{selection.nutrition_info.calories || 0}</div>
-                            <small>سعرة</small>
+                  {/* حساب القيم الغذائية من المكونات */}
+                  {(() => {
+                    const validIngredients = selection.ingredients?.filter(ingredient => 
+                      ingredient && (ingredient.food_name_ar || ingredient.food_name || ingredient.name)
+                    ) || []
+                    
+                    const totalNutrition = validIngredients.reduce((total, ingredient) => {
+                      const amount = ingredient.amount || ingredient.quantity || 0
+                      const caloriesPer100g = ingredient.calories_per_100g || ingredient.calories || 0
+                      const proteinPer100g = ingredient.protein_per_100g || ingredient.protein || 0
+                      const carbsPer100g = ingredient.carbs_per_100g || ingredient.carbs || 0
+                      const fatPer100g = ingredient.fat_per_100g || ingredient.fat || 0
+                      
+                      return {
+                        calories: total.calories + (caloriesPer100g * amount / 100),
+                        protein: total.protein + (proteinPer100g * amount / 100),
+                        carbs: total.carbs + (carbsPer100g * amount / 100),
+                        fat: total.fat + (fatPer100g * amount / 100)
+                      }
+                    }, { calories: 0, protein: 0, carbs: 0, fat: 0 }) || { calories: 0, protein: 0, carbs: 0, fat: 0 }
+                    
+                    return (
+                      <div className="nutrition-summary">
+                        <h6 className="text-success mb-2">
+                          <i className="fas fa-chart-pie me-1"></i>
+                          القيم الغذائية الإجمالية:
+                        </h6>
+                        <div className="row text-center">
+                          <div className="col-3">
+                            <div className="p-2 bg-primary text-white rounded">
+                              <div className="fw-bold">{Math.round(totalNutrition.calories)}</div>
+                              <small>سعرة</small>
+                            </div>
                           </div>
-                        </div>
-                        <div className="col-4">
-                          <div className="p-2 bg-success text-white rounded">
-                            <div className="fw-bold">{selection.nutrition_info.protein || 0}g</div>
-                            <small>بروتين</small>
+                          <div className="col-3">
+                            <div className="p-2 bg-success text-white rounded">
+                              <div className="fw-bold">{Math.round(totalNutrition.protein)}g</div>
+                              <small>بروتين</small>
+                            </div>
                           </div>
-                        </div>
-                        <div className="col-4">
-                          <div className="p-2 bg-info text-white rounded">
-                            <div className="fw-bold">{selection.nutrition_info.carbs || 0}g</div>
-                            <small>كربوهيدرات</small>
+                          <div className="col-3">
+                            <div className="p-2 bg-info text-white rounded">
+                              <div className="fw-bold">{Math.round(totalNutrition.carbs)}g</div>
+                              <small>كربوهيدرات</small>
+                            </div>
+                          </div>
+                          <div className="col-3">
+                            <div className="p-2 bg-warning text-white rounded">
+                              <div className="fw-bold">{Math.round(totalNutrition.fat)}g</div>
+                              <small>دهون</small>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
                 </div>
                 <div className="card-footer">
                   <div className="d-flex justify-content-between align-items-center">

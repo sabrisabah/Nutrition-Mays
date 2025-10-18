@@ -192,7 +192,13 @@ export function AuthProvider({ children }) {
       console.log('Registration response:', response.data)
       
       dispatch({ type: 'SET_LOADING', payload: false })
-      toast.success('تم إنشاء الحساب بنجاح. يرجى تسجيل الدخول.')
+      toast.success('تم إنشاء الحساب بنجاح. سيتم توجيهك لصفحة تسجيل الدخول.')
+      
+      // Auto redirect to login page after successful registration
+      setTimeout(() => {
+        window.location.href = '/login'
+      }, 2000) // 2 seconds delay to show the success message
+      
       return { success: true }
     } catch (error) {
       console.error('Registration error:', error)

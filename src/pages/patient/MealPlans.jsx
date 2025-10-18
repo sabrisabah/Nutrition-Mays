@@ -11,6 +11,25 @@ const PatientMealPlans = () => {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   
+  // دالة لترجمة عناوين الخطط
+  const translatePlanTitle = (title) => {
+    const translations = {
+      'weight_loss': 'إنقاص وزن',
+      'weight_maintenance': 'تثبيت وزن',
+      'weight_gain': 'زيادة وزن',
+      'health_maintenance': 'الحفاظ على الصحة',
+      'pregnant': 'حامل',
+      'breastfeeding': 'مرضع',
+      'diabetic': 'مرضى السكري',
+      'keto': 'الكيتو',
+      'balanced': 'المتوازن',
+      'low_carb': 'منخفض الكربوهيدرات',
+      'muscle_gain': 'بناء العضلات',
+      'muscle_building': 'بناء العضلات'
+    }
+    return translations[title] || title
+  }
+  
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [selectedMeals, setSelectedMeals] = useState([])
   const [showMealSelection, setShowMealSelection] = useState(false)
@@ -146,7 +165,6 @@ const PatientMealPlans = () => {
     const dietPlans = {
       'keto': 'الكيتو',
       'balanced': 'المتوازن',
-      'weight_loss': 'فقدان الوزن',
       'muscle_gain': 'بناء العضلات',
       'diabetic': 'مرضى السكري',
       'low_carb': 'منخفض الكربوهيدرات',
@@ -611,7 +629,7 @@ const PatientMealPlans = () => {
                      
                      return (
                        <div key={index} className="mb-2 p-2 border rounded">
-                         <strong>{plan.title}</strong> - 
+                         <strong>{translatePlanTitle(plan.title)}</strong> - 
                          من {startDate.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' })} إلى {endDate.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' })}
               <br />
                          <small className={`badge ${isActive ? 'bg-success' : 'bg-secondary'} me-1`}>
@@ -641,7 +659,7 @@ const PatientMealPlans = () => {
                       <div className="d-flex justify-content-between align-items-center">
                         <h5 className="mb-0">
                           <i className="fas fa-utensils me-2"></i>
-                          {plan.title}
+                          {translatePlanTitle(plan.title)}
                         </h5>
                         <span className="badge bg-light text-success">
                           {getDietPlanText(plan.diet_plan)}
@@ -689,7 +707,7 @@ const PatientMealPlans = () => {
               <div className="modal-header bg-success text-white">
                 <h5 className="modal-title">
                   <i className="fas fa-utensils me-2"></i>
-                  {selectedPlan.title}
+                  {translatePlanTitle(selectedPlan.title)}
                 </h5>
                 <button
                   type="button"
@@ -881,20 +899,21 @@ const PatientMealPlans = () => {
                                                       }}>
                                                         <div className="d-flex align-items-center">
                                                           <i className="fas fa-circle text-success me-2" style={{ fontSize: '0.5rem' }}></i>
-                                                          <span className="fw-bold text-dark">{ingredient.food_name_ar || ingredient.food?.name_ar || ingredient.food?.name || ingredient.name}</span>
+                                                          <span className="fw-bold text-dark">
+                                                            {ingredient.food_name_ar || ingredient.food_name || ingredient.food?.name_ar || ingredient.food?.name || ingredient.name || 'مكون غير محدد'}
+                                                          </span>
                                                         </div>
                                                         <div className="text-muted d-flex align-items-center">
                                                           <span className="badge bg-primary me-2">
-                                                            {ingredient.amount || ingredient.quantity}g
-                                              </span>
+                                                            {ingredient.amount || ingredient.quantity || 0}g
+                                                          </span>
+                                                          <small className="text-info">
+                                                            سعرات: {Math.round(ingredient.calories || ingredient.calories_per_100g || 0)} | بروتين: {Math.round(ingredient.protein || ingredient.protein_per_100g || 0)}g
+                                                          </small>
                                                           {ingredient.notes && (
-                                                            <small className="text-info">- {ingredient.notes}</small>
+                                                            <small className="text-info ms-1">- {ingredient.notes}</small>
                                                           )}
-                                            </div>
-                                                      </div>
-                                                      {/* Individual ingredient nutrition */}
-                                                      <div className="text-info small ms-3">
-                                                        سعرات: {Math.round(ingredient.nutrition?.calories || 0)} | بروتين: {Math.round(ingredient.nutrition?.protein || 0)}g
+                                                        </div>
                                                       </div>
                                                     </div>
                                                   ))}
@@ -915,7 +934,7 @@ const PatientMealPlans = () => {
                                                     color: 'white',
                                                     borderRadius: '8px'
                                                   }}>
-                                                    <div className="fw-bold fs-6">{Math.round(meal.calories || meal.total_nutrition?.calories || 0)}</div>
+                                                    <div className="fw-bold fs-6">{Math.round(meal.total_nutrition?.calories || meal.calories || 0)}</div>
                                                     <small>سعرة</small>
                                                   </div>
                                                 </div>
@@ -925,7 +944,7 @@ const PatientMealPlans = () => {
                                                     color: 'white',
                                                     borderRadius: '8px'
                                                   }}>
-                                                    <div className="fw-bold fs-6">{Math.round(meal.protein || meal.total_nutrition?.protein || 0)}g</div>
+                                                    <div className="fw-bold fs-6">{Math.round(meal.total_nutrition?.protein || meal.protein || 0)}g</div>
                                                   <small>بروتين</small>
                                                 </div>
                                               </div>
@@ -935,7 +954,7 @@ const PatientMealPlans = () => {
                                                     color: 'white',
                                                     borderRadius: '8px'
                                                   }}>
-                                                    <div className="fw-bold fs-6">{Math.round(meal.carbs || meal.total_nutrition?.carbs || 0)}g</div>
+                                                    <div className="fw-bold fs-6">{Math.round(meal.total_nutrition?.carbs || meal.carbs || 0)}g</div>
                                                   <small>كربوهيدرات</small>
                                                 </div>
                                               </div>
@@ -945,7 +964,7 @@ const PatientMealPlans = () => {
                                                     color: 'white',
                                                     borderRadius: '8px'
                                                   }}>
-                                                    <div className="fw-bold fs-6">{Math.round(meal.fat || meal.total_nutrition?.fat || 0)}g</div>
+                                                    <div className="fw-bold fs-6">{Math.round(meal.total_nutrition?.fat || meal.fat || 0)}g</div>
                                                   <small>دهون</small>
                                                 </div>
                                               </div>
@@ -1038,12 +1057,17 @@ const PatientMealPlans = () => {
                                             <div key={idx} className="ingredient-item d-flex justify-content-between align-items-center mb-1 p-1 bg-light rounded small">
                                               <div className="d-flex align-items-center">
                                                 <i className="fas fa-circle text-success me-1" style={{ fontSize: '0.4rem' }}></i>
-                                                <span className="fw-bold">{ingredient.food?.name_ar || ingredient.food?.name || ingredient.name}</span>
+                                                <span className="fw-bold">
+                                                  {ingredient.food_name_ar || ingredient.food_name || ingredient.food?.name_ar || ingredient.food?.name || ingredient.name || 'مكون غير محدد'}
+                                                </span>
                                               </div>
                                               <div className="text-muted">
                                                 <span className="badge bg-primary small">
-                                                  {ingredient.amount || ingredient.quantity}g
+                                                  {ingredient.amount || ingredient.quantity || 0}g
                                                 </span>
+                                                <small className="text-info ms-1">
+                                                  سعرات: {Math.round(ingredient.calories || ingredient.calories_per_100g || 0)} | بروتين: {Math.round(ingredient.protein || ingredient.protein_per_100g || 0)}g
+                                                </small>
                                                 {ingredient.notes && (
                                                   <small className="text-info ms-1">- {ingredient.notes}</small>
                                                 )}
