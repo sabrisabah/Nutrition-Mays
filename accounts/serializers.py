@@ -11,11 +11,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     height = serializers.FloatField(write_only=True, required=False, allow_null=True)
     current_weight = serializers.FloatField(write_only=True, required=False, allow_null=True)
     goal = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
 
     class Meta:
         model = User
         fields = ['username', 'first_name', 'last_name', 'password', 'password_confirm', 'role', 'phone',
-                 'gender', 'height', 'current_weight', 'goal']
+                 'date_of_birth', 'gender', 'height', 'current_weight', 'goal']
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
@@ -76,24 +77,91 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'username']
 
 
+class UserWithPatientProfileSerializer(serializers.ModelSerializer):
+    daily_calories = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'role', 'phone', 'avatar', 'date_of_birth', 'address', 'is_verified', 'daily_calories']
+        read_only_fields = ['id', 'username']
+    
+    def get_daily_calories(self, obj):
+        """Get daily calories from patient profile if user is a patient"""
+        if hasattr(obj, 'patient_profile') and obj.patient_profile:
+            return obj.patient_profile.daily_calories
+        return None
+
+
 class PatientProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    calculated_daily_calories = serializers.SerializerMethodField()
+    nutrition_targets = serializers.SerializerMethodField()
 
     class Meta:
         model = PatientProfile
         fields = '__all__'
         read_only_fields = ['user']
+    
+    def get_calculated_daily_calories(self, obj):
+        """Calculate daily calories automatically from weight, height, activity, and goal"""
+        return obj.calculate_daily_calories()
+    
+    def get_nutrition_targets(self, obj):
+        """Calculate nutrition targets (protein, carbs, fat) based on daily calories"""
+        return obj.calculate_nutrition_targets()
+    
+    def update(self, instance, validated_data):
+        """Auto-calculate daily_calories if not provided"""
+        # If daily_calories is not being set manually, calculate it automatically
+        if 'daily_calories' not in validated_data or validated_data.get('daily_calories') is None:
+            calculated_calories = instance.calculate_daily_calories()
+            if calculated_calories:
+                validated_data['daily_calories'] = calculated_calories
+        
+        return super().update(instance, validated_data)
+    
+    def create(self, validated_data):
+        """Auto-calculate daily_calories when creating profile"""
+        instance = super().create(validated_data)
+        # Calculate and save daily_calories if not provided
+        if not instance.daily_calories:
+            calculated_calories = instance.calculate_daily_calories()
+            if calculated_calories:
+                instance.daily_calories = calculated_calories
+                instance.save()
+        return instance
 
 
 class PatientProfileForPatientSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    calculated_daily_calories = serializers.SerializerMethodField()
+    nutrition_targets = serializers.SerializerMethodField()
 
     class Meta:
         model = PatientProfile
         fields = ['id', 'user', 'gender', 'height', 'current_weight', 'target_weight', 'goal', 
                  'medical_conditions', 'dietary_restrictions', 'medications', 'emergency_contact', 
-                 'emergency_phone', 'created_at', 'updated_at']
+                 'emergency_phone', 'daily_calories', 'calculated_daily_calories', 'nutrition_targets',
+                 'activity_level', 'created_at', 'updated_at']
         read_only_fields = ['user', 'gender', 'height', 'current_weight', 'goal']
+    
+    def get_calculated_daily_calories(self, obj):
+        """Calculate daily calories automatically from weight, height, activity, and goal"""
+        return obj.calculate_daily_calories()
+    
+    def get_nutrition_targets(self, obj):
+        """Calculate nutrition targets (protein, carbs, fat) based on daily calories"""
+        return obj.calculate_nutrition_targets()
+    
+    def update(self, instance, validated_data):
+        """Auto-calculate daily_calories if not provided"""
+        # If daily_calories is not being set manually, calculate it automatically
+        if 'daily_calories' not in validated_data or validated_data.get('daily_calories') is None:
+            calculated_calories = instance.calculate_daily_calories()
+            if calculated_calories:
+                validated_data['daily_calories'] = calculated_calories
+        
+        return super().update(instance, validated_data)
 
 
 class DoctorProfileSerializer(serializers.ModelSerializer):

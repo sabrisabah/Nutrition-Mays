@@ -8,17 +8,35 @@ const PatientMealSelections = ({ patientId }) => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
 
   // جلب اختيارات المريض
-  const { data: mealSelections, isLoading, error } = useQuery(
+  const { data: mealSelectionsData, isLoading, error } = useQuery(
     ['patient-meal-selections', patientId, selectedDate],
     () => api.get(`/api/meals/patients/${patientId}/selected-meals/?date=${selectedDate}`).then(res => {
       console.log('Patient meal selections API response:', res.data)
-      return res.data
+      
+      // الـ API يرسل كائن يحتوي على selections و required_calories
+      const responseData = res.data
+      const selections = responseData?.selections || responseData || []
+      const requiredCalories = responseData?.required_calories
+      
+      console.log('📊 Doctor - Extracted data:', {
+        selectionsCount: Array.isArray(selections) ? selections.length : 0,
+        requiredCalories: requiredCalories
+      })
+      
+      // إرجاع الكائن الكامل مع selections و required_calories
+      return {
+        selections: selections,
+        required_calories: requiredCalories
+      }
     }),
     { 
       enabled: !!patientId,
       refetchInterval: 30000, // تحديث كل 30 ثانية
     }
   )
+  
+  // استخراج selections من البيانات
+  const mealSelections = mealSelectionsData?.selections || []
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('ar-SA', {
@@ -30,13 +48,35 @@ const PatientMealSelections = ({ patientId }) => {
   }
 
   const getMealTypeText = (mealType) => {
+    console.log('🔍 Doctor - getMealTypeText - mealType:', mealType, 'type:', typeof mealType)
+    
     const types = {
       'breakfast': 'الإفطار',
-      'lunch': 'الغداء', 
+      'Breakfast': 'الإفطار',
+      'lunch': 'الغداء',
+      'Lunch': 'الغداء',
       'dinner': 'العشاء',
-      'snack': 'وجبة خفيفة'
+      'Dinner': 'العشاء',
+      'snack': 'وجبة خفيفة',
+      'Snack': 'وجبة خفيفة',
+      'Morning Snack': 'وجبة خفيفة صباحية',
+      'Afternoon Snack': 'وجبة خفيفة بعد الظهر',
+      'Evening Snack': 'وجبة خفيفة مسائية',
+      'Pre-Workout': 'قبل التمرين',
+      'Post-Workout': 'بعد التمرين',
+      'morning_snack': 'وجبة خفيفة صباحية',
+      'afternoon_snack': 'وجبة خفيفة مسائية'
     }
-    return types[mealType] || mealType
+    
+    // إذا كان mealType فارغ أو null، نحاول استخراجه من اسم الوجبة
+    if (!mealType || mealType === 'undefined' || mealType === 'null') {
+      console.log('🔍 Doctor - mealType is empty, trying to extract from meal name')
+      return 'وجبة مختارة'
+    }
+    
+    const result = types[mealType] || mealType || 'وجبة مختارة'
+    console.log('🔍 Doctor - getMealTypeText result:', result)
+    return result
   }
 
   if (isLoading) {
@@ -119,15 +159,6 @@ const PatientMealSelections = ({ patientId }) => {
           {mealSelections.map((selection, index) => (
             <div key={index} className="col-md-6 col-lg-4 mb-4">
               <div className="card h-100 border-success">
-                <div className="card-header bg-success text-white">
-                  <div className="d-flex align-items-center">
-                    <i className="fas fa-utensils me-2"></i>
-                    <div>
-                      <h6 className="mb-0">{getMealTypeText(selection.meal_type)}</h6>
-                      <small>{formatDate(selection.selected_at)}</small>
-                    </div>
-                  </div>
-                </div>
                 <div className="card-body">
                   <h5 className="card-title text-primary">{selection.meal_name}</h5>
                   <p className="card-text text-muted small">
@@ -135,6 +166,17 @@ const PatientMealSelections = ({ patientId }) => {
                   </p>
                   
                   {/* عرض المكونات */}
+                  {(() => {
+                    console.log('🔍 Doctor - PatientMealSelections - Selection data:', selection)
+                    console.log('🔍 Doctor - PatientMealSelections - Ingredients:', selection.ingredients)
+                    console.log('🔍 Doctor - PatientMealSelections - Ingredients length:', selection.ingredients?.length || 0)
+                    console.log('🔍 Doctor - PatientMealSelections - Ingredients type:', typeof selection.ingredients)
+                    console.log('🔍 Doctor - PatientMealSelections - Ingredients is array:', Array.isArray(selection.ingredients))
+                    if (selection.ingredients && selection.ingredients.length > 0) {
+                      console.log('🔍 Doctor - PatientMealSelections - First ingredient:', selection.ingredients[0])
+                    }
+                    return null
+                  })()}
                   {selection.ingredients && selection.ingredients.length > 0 && (
                     <div className="ingredients-section mb-3">
                       <h6 className="text-primary mb-2">

@@ -43,6 +43,23 @@ class MealPlanAdmin(admin.ModelAdmin):
 class MealIngredientInline(admin.TabularInline):
     model = MealIngredient
     extra = 1
+    fields = ('food', 'amount', 'get_calories_per_100g', 'get_actual_calories', 'notes')
+    readonly_fields = ('get_calories_per_100g', 'get_actual_calories')
+    
+    def get_calories_per_100g(self, obj):
+        """Display calories per 100g for the food"""
+        if obj and obj.food:
+            return f"{obj.food.calories_per_100g:.1f}"
+        return "-"
+    get_calories_per_100g.short_description = "Calories per 100g"
+    
+    def get_actual_calories(self, obj):
+        """Calculate and display actual calories: (amount × calories_per_100g) ÷ 100"""
+        if obj and obj.food and obj.amount:
+            actual_calories = (obj.amount * obj.food.calories_per_100g) / 100
+            return f"{actual_calories:.1f}"
+        return "-"
+    get_actual_calories.short_description = "Actual Calories"
 
 
 @admin.register(Meal)

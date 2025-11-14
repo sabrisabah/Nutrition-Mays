@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery } from 'react-query'
 import { useLanguage } from '../../hooks/useLanguage'
 import { useAuth } from '../../hooks/useAuth'
@@ -6,6 +6,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import { formatTime12Hour, formatDateGregorian } from '../../utils/timeUtils'
 import PatientSelectedMeals from '../../components/patient/PatientSelectedMeals'
 import api from '../../services/api'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 const PatientDashboard = () => {
   const { t } = useLanguage()
@@ -107,6 +108,32 @@ const PatientDashboard = () => {
   const getLatestMeasurement = () => {
     return measurements?.[0] || null
   }
+
+  // تحضير البيانات للرسم البياني
+  const weightChartData = useMemo(() => {
+    if (!measurements || measurements.length === 0) return []
+    
+    // ترتيب القياسات حسب التاريخ (من الأقدم للأحدث) - آخر 10 قياسات
+    const sortedMeasurements = [...measurements]
+      .sort((a, b) => {
+        const dateA = new Date(a.measured_at || a.recorded_date || a.measured_date)
+        const dateB = new Date(b.measured_at || b.recorded_date || b.measured_date)
+        return dateA - dateB
+      })
+      .slice(-10) // آخر 10 قياسات فقط
+    
+    return sortedMeasurements.map((measurement) => {
+      const date = new Date(measurement.measured_at || measurement.recorded_date || measurement.measured_date)
+      return {
+        date: date.toLocaleDateString('ar-SA', { 
+          calendar: 'gregory',
+          month: 'short',
+          day: 'numeric'
+        }),
+        weight: parseFloat(measurement.weight) || 0,
+      }
+    })
+  }, [measurements])
 
   // دوال مساعدة لتحديد حالة الخطة
   const getPlanStatus = (plan) => {
@@ -251,6 +278,52 @@ const PatientDashboard = () => {
         </div>
       </div>
 
+      {/* Clinic Contact Information */}
+      <div className="row mb-4">
+        <div className="col-12">
+          <div className="alert alert-info">
+            <div className="d-flex align-items-center">
+              <i className="fas fa-phone-alt me-3 fs-4"></i>
+              <div className="flex-grow-1">
+                <h5 className="mb-2">
+                  <strong>معلومات الاتصال بالعيادة</strong>
+                </h5>
+                <div className="d-flex align-items-center flex-wrap gap-3">
+                  <div className="p-3 bg-white rounded border">
+                    <div className="d-flex align-items-center">
+                      <i className="fas fa-hospital text-info me-2"></i>
+                      <div>
+                        <strong className="text-info">رقم العيادة</strong>
+                        <br />
+                        <a 
+                          href="tel:+9647879558889" 
+                          className="text-primary fw-bold text-decoration-none"
+                          style={{ fontSize: '1.25rem' }}
+                        >
+                          <i className="fas fa-phone me-2"></i>
+                          +9647879558889
+                        </a>
+                        <button 
+                          className="btn btn-sm btn-outline-primary ms-2"
+                          onClick={() => window.open('tel:+9647879558889', '_self')}
+                        >
+                          <i className="fas fa-phone me-1"></i>
+                          اتصل الآن
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <small className="text-muted mt-2 d-block">
+                  <i className="fas fa-info-circle me-1"></i>
+                  للاستفسارات أو الحجز المباشر، يرجى الاتصال بالرقم أعلاه
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Quick Stats */}
       <div className="row mb-4">
         <div className="col-md-3 mb-3">
@@ -372,13 +445,13 @@ const PatientDashboard = () => {
                               <div className="fw-bold text-success">{plan.target_protein}g</div>
                             </div>
                             <div className="col-4">
-                              <small className="text-muted">الكربوهيدرات</small>
-                              <div className="fw-bold text-warning">{plan.target_carbs || '--'}g</div>
+                              <small className="text-muted">النظام الغذائي</small>
+                              <div className="fw-bold text-info">{plan.diet_plan_display || plan.diet_plan || 'غير محدد'}</div>
                             </div>
                           </div>
                           <p className="small text-muted mb-0">
                             <i className="fas fa-calendar me-1"></i>
-                            من {new Date(plan.start_date).toLocaleDateString('ar-SA')} إلى {new Date(plan.end_date).toLocaleDateString('ar-SA')}
+                            من {new Date(plan.start_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })} إلى {new Date(plan.end_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })}
                           </p>
                         </div>
                         <div className="card-footer">
@@ -427,7 +500,7 @@ const PatientDashboard = () => {
                       <div className="col-md-6">
                         <p className="mb-1"><strong>اسم الخطة:</strong> {currentPlans[0].title}</p>
                         <p className="mb-1"><strong>الوصف:</strong> {currentPlans[0].description || 'لا يوجد وصف'}</p>
-                        <p className="mb-1"><strong>الفترة:</strong> من {new Date(currentPlans[0].start_date).toLocaleDateString('ar-SA')} إلى {new Date(currentPlans[0].end_date).toLocaleDateString('ar-SA')}</p>
+                        <p className="mb-1"><strong>الفترة:</strong> من {new Date(currentPlans[0].start_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })} إلى {new Date(currentPlans[0].end_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })}</p>
                         <p className="mb-1"><strong>الحالة:</strong> <span className={`badge ${getPlanStatusBadgeClass(currentPlans[0])}`}>{getPlanStatusText(currentPlans[0])}</span></p>
                       </div>
                       <div className="col-md-6">
@@ -499,8 +572,8 @@ const PatientDashboard = () => {
                                     <p><strong>البروتين المستهدف:</strong> ${plan.target_protein}g</p>
                                     <p><strong>الكربوهيدرات المستهدفة:</strong> ${plan.target_carbs || 'غير محدد'}g</p>
                                     <p><strong>الدهون المستهدفة:</strong> ${plan.target_fat || 'غير محدد'}g</p>
-                                    <p><strong>من:</strong> ${new Date(plan.start_date).toLocaleDateString('ar-SA')}</p>
-                                    <p><strong>إلى:</strong> ${new Date(plan.end_date).toLocaleDateString('ar-SA')}</p>
+                                    <p><strong>من:</strong> ${new Date(plan.start_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })}</p>
+                                    <p><strong>إلى:</strong> ${new Date(plan.end_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })}</p>
                                     <p><strong>الحالة:</strong> ${plan.is_active ? 'نشطة' : 'غير نشطة'}</p>
                                   </div>
                                 `;
@@ -669,6 +742,84 @@ const PatientDashboard = () => {
                     </div>
                   </div>
                 </div>
+                
+                {/* رسم بياني لتطور الوزن */}
+                {weightChartData.length > 1 && (
+                  <div className="mt-4">
+                    <h6 className="mb-3">
+                      <i className="fas fa-chart-line text-primary me-2"></i>
+                      متابعة تطور الوزن (آخر {weightChartData.length} قياسات)
+                    </h6>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={weightChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis 
+                          dataKey="date" 
+                          angle={-45}
+                          textAnchor="end"
+                          height={60}
+                          style={{ fontSize: '11px' }}
+                        />
+                        <YAxis 
+                          label={{ value: 'الوزن (كجم)', angle: -90, position: 'insideLeft' }}
+                          domain={['dataMin - 2', 'dataMax + 2']}
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#fff', 
+                            border: '1px solid #ccc',
+                            borderRadius: '5px',
+                            textAlign: 'right'
+                          }}
+                          formatter={(value) => [`${value} كجم`, 'الوزن']}
+                          labelFormatter={(label) => `التاريخ: ${label}`}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="weight" 
+                          stroke="#0d6efd" 
+                          strokeWidth={3}
+                          dot={{ r: 5, fill: '#0d6efd' }}
+                          activeDot={{ r: 7 }}
+                          name="الوزن"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    
+                    {/* إحصائيات سريعة */}
+                    {weightChartData.length > 1 && (
+                      <div className="row mt-3">
+                        <div className="col-md-4 mb-2">
+                          <div className="p-2 bg-primary bg-opacity-10 rounded text-center">
+                            <div className="fw-bold text-primary">
+                              {weightChartData[0].weight} كجم
+                            </div>
+                            <small className="text-muted">أول قياس</small>
+                          </div>
+                        </div>
+                        <div className="col-md-4 mb-2">
+                          <div className="p-2 bg-success bg-opacity-10 rounded text-center">
+                            <div className="fw-bold text-success">
+                              {weightChartData[weightChartData.length - 1].weight} كجم
+                            </div>
+                            <small className="text-muted">آخر قياس</small>
+                          </div>
+                        </div>
+                        <div className="col-md-4 mb-2">
+                          <div className="p-2 bg-info bg-opacity-10 rounded text-center">
+                            <div className="fw-bold text-info">
+                              {(weightChartData[weightChartData.length - 1].weight - weightChartData[0].weight).toFixed(1)} كجم
+                            </div>
+                            <small className="text-muted">
+                              {weightChartData[weightChartData.length - 1].weight >= weightChartData[0].weight ? 'زيادة' : 'نقصان'}
+                            </small>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
                 <div className="text-center mt-3">
                   <a href="/measurements" className="btn btn-outline-info">
                     <i className="fas fa-chart-area me-2"></i>

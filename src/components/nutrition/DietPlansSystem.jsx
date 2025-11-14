@@ -12,7 +12,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     keto: {
       id: 'keto',
       name: 'نظام الكيتو دايت',
-      description: 'نظام غذائي عالي الدهون ومنخفض الكربوهيدرات لحرق الدهون (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي عالي الدهون ومنخفض الكربوهيدرات لحرق الدهون',
       icon: '🥑',
       color: 'success',
       macroDistribution: {
@@ -78,7 +78,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     balanced: {
       id: 'balanced',
       name: 'النظام المتوازن',
-      description: 'نظام غذائي متوازن يحتوي على جميع العناصر الغذائية (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي متوازن يحتوي على جميع العناصر الغذائية',
       icon: '⚖️',
       color: 'primary',
       macroDistribution: {
@@ -141,7 +141,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     integrated: {
       id: 'integrated',
       name: 'النظام الغذائي المتكامل',
-      description: 'نظام غذائي متكامل وشامل يحتوي على جميع العناصر الغذائية (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي متكامل وشامل يحتوي على جميع العناصر الغذائية',
       icon: '🎯',
       color: 'info',
       macroDistribution: {
@@ -204,7 +204,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     weightGain: {
       id: 'weightGain',
       name: 'نظام زيادة الوزن',
-      description: 'نظام غذائي عالي السعرات لزيادة الوزن بطريقة صحية (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي عالي السعرات لزيادة الوزن بطريقة صحية',
       icon: '📈',
       color: 'warning',
       macroDistribution: {
@@ -268,7 +268,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     pregnancy: {
       id: 'pregnancy',
       name: 'نظام الحامل',
-      description: 'نظام غذائي مخصص للحوامل مع التركيز على العناصر الغذائية المهمة (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي مخصص للحوامل مع التركيز على العناصر الغذائية المهمة',
       icon: '🤱',
       color: 'info',
       macroDistribution: {
@@ -333,7 +333,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     breastfeeding: {
       id: 'breastfeeding',
       name: 'نظام المرضع',
-      description: 'نظام غذائي مخصص للمرضعات مع زيادة السعرات والعناصر الغذائية (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي مخصص للمرضعات مع زيادة السعرات والعناصر الغذائية',
       icon: '🍼',
       color: 'info',
       macroDistribution: {
@@ -397,7 +397,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     diabetes: {
       id: 'diabetes',
       name: 'نظام السكري',
-      description: 'نظام غذائي مخصص لمرضى السكري مع التحكم في الكربوهيدرات (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي مخصص لمرضى السكري مع التحكم في الكربوهيدرات',
       icon: '🩺',
       color: 'danger',
       macroDistribution: {
@@ -461,7 +461,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     weightMaintenance: {
       id: 'weightMaintenance',
       name: 'نظام تثبيت الوزن',
-      description: 'نظام غذائي للحفاظ على الوزن الحالي مع التوازن الغذائي (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي للحفاظ على الوزن الحالي مع التوازن الغذائي',
       icon: '⚖️',
       color: 'secondary',
       macroDistribution: {
@@ -524,7 +524,7 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     high_protein: {
       id: 'high_protein',
       name: 'النظام الغذائي عالي البروتين',
-      description: 'نظام غذائي يركز على البروتين لبناء العضلات وفقدان الدهون (يتم تخفيض 500 سعرة حرارية)',
+      description: 'نظام غذائي يركز على البروتين لبناء العضلات وفقدان الدهون',
       icon: '💪',
       color: 'primary',
       macroDistribution: {
@@ -595,8 +595,8 @@ const DietPlansSystem = ({ patientProfile, nutritionData, onDietPlanSelected }) 
     let baseCalories = selectedCalories || nutritionData.targetCalories
     const { macroDistribution } = dietPlan
 
-r    // طرح 500 سعرة حرارية لجميع الأنظمة الغذائية
-    baseCalories = Math.max(baseCalories - 500, 1200) // الحد الأدنى 1200 سعرة
+    // استخدام السعرات الأصلية للمريض بدون تخفيض
+    baseCalories = Math.max(baseCalories, 1200) // الحد الأدنى 1200 سعرة
 
     const carbs = Math.round((baseCalories * macroDistribution.carbs / 100) / 4)
     const protein = Math.round((baseCalories * macroDistribution.protein / 100) / 4)
@@ -608,7 +608,7 @@ r    // طرح 500 سعرة حرارية لجميع الأنظمة الغذائ�
       fat,
       calories: baseCalories,
       originalCalories: nutritionData.targetCalories, // حفظ السعرات الأصلية
-      calorieReduction: 500 // مقدار التخفيض لجميع الأنظمة
+      calorieReduction: 0 // لا يوجد تخفيض في السعرات
     }
   }
 
@@ -643,8 +643,8 @@ r    // طرح 500 سعرة حرارية لجميع الأنظمة الغذائ�
     if (nutritionData) {
       let newCalories = nutritionData.targetCalories
       
-      // تطبيق التخفيض لجميع الأنظمة الغذائية
-      newCalories = Math.max(newCalories - 500, 1200)
+      // استخدام السعرات الأصلية للمريض بدون تخفيض
+      newCalories = Math.max(newCalories, 1200)
       
       setSelectedCalories(newCalories)
     }
@@ -755,14 +755,12 @@ r    // طرح 500 سعرة حرارية لجميع الأنظمة الغذائ�
                     <span className="badge bg-success">
                       إجمالي السعرات: {customizedPlan.calories} سعرة
                     </span>
-                    {customizedPlan.calorieReduction > 0 && (
-                      <div className="mt-2">
-                        <small className="text-success">
-                          <i className="fas fa-arrow-down me-1"></i>
-                          تم تخفيض {customizedPlan.calorieReduction} سعرة من السعرات الأصلية ({customizedPlan.originalCalories} سعرة)
-                        </small>
-                      </div>
-                    )}
+                    <div className="mt-2">
+                      <small className="text-info">
+                        <i className="fas fa-info-circle me-1"></i>
+                        السعرات الحرارية تعتمد على احتياجات المريض اليومية
+                      </small>
+                    </div>
                   </div>
                 </div>
 

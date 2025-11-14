@@ -196,6 +196,17 @@ const DoctorMealPlans = () => {
       // تتبع التواريخ لكل خطة
       res.data.results.forEach((plan, index) => {
         console.log(`Plan ${index + 1} (ID: ${plan.id}): Start: ${plan.start_date}, End: ${plan.end_date}`)
+        if (plan.meals && plan.meals.length > 0) {
+          console.log(`🔍 Doctor - Plan ${index + 1} meals breakdown:`)
+          plan.meals.forEach((meal, mealIndex) => {
+            console.log(`  🍽️ Meal ${mealIndex + 1}: ${meal.name} - Ingredients: ${meal.ingredients?.length || 0}`)
+            if (meal.ingredients && meal.ingredients.length > 0) {
+              meal.ingredients.forEach((ingredient, ingIndex) => {
+                console.log(`    🥘 Ingredient ${ingIndex + 1}: ${ingredient.food?.name_ar || ingredient.food_name_ar} (${ingredient.amount}g)`)
+              })
+            }
+          })
+        }
       })
       return res.data.results
     }),
@@ -510,6 +521,9 @@ const DoctorMealPlans = () => {
         setTimeout(() => {
           console.log('🔄 Refetching meal plans after update...')
           queryClient.refetchQueries('doctor-meal-plans')
+          // تحديث بيانات المريض أيضاً
+          queryClient.invalidateQueries('patient-meal-plans')
+          queryClient.invalidateQueries('patient-meal-selections')
         }, 100)
         
         setShowEditModal(false)
@@ -559,7 +573,7 @@ const DoctorMealPlans = () => {
 
     const profile = patient.patient_profile
     const { current_weight, height, goal, activity_level, gender } = profile
-    const age = patient.age || 30
+    const age = patient.age || patient.user?.age || 30
 
     // حساب العمر من تاريخ الميلاد إذا كان متوفراً
     let calculatedAge = age
@@ -2041,6 +2055,10 @@ const DoctorMealPlans = () => {
                                             )}
                                             
                                             {/* المكونات */}
+                                            {(() => {
+                                              console.log('🔍 Doctor - Meal ingredients debug:', meal.name, meal.ingredients)
+                                              return null
+                                            })()}
                                             {meal.ingredients && meal.ingredients.length > 0 && (
                                               <div className="ingredients mb-2">
                                                 <small className="text-muted">
@@ -2701,6 +2719,10 @@ const DoctorMealPlans = () => {
                                                   {meal.description}
                                                 </p>
                                                 
+                                                {(() => {
+                                                  console.log('🔍 Doctor - Suggested meal ingredients debug:', meal.name, meal.ingredients)
+                                                  return null
+                                                })()}
                                                 {meal.ingredients && meal.ingredients.length > 0 && (
                                                   <div className="ingredients mb-2">
                                                     <small className="text-muted">

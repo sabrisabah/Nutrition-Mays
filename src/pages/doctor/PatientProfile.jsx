@@ -8,6 +8,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import NutritionCalculator from '../../components/nutrition/NutritionCalculator'
 import DietPlansSystem from '../../components/nutrition/DietPlansSystem'
 import PatientMealSelections from '../../components/doctor/PatientMealSelections'
+import GoalCalorieSuggestions from '../../components/nutrition/GoalCalorieSuggestions'
 import api from '../../services/api'
 
 const DoctorPatientProfile = () => {
@@ -31,7 +32,8 @@ const DoctorPatientProfile = () => {
     goal: '',
     medical_conditions: '',
     dietary_restrictions: '',
-    medications: ''
+    medications: '',
+    daily_calories: ''
   })
   const [measurementForm, setMeasurementForm] = useState({
     weight: '',
@@ -69,7 +71,8 @@ const DoctorPatientProfile = () => {
         goal: profile.goal || '',
         medical_conditions: profile.medical_conditions || '',
         dietary_restrictions: profile.dietary_restrictions || '',
-        medications: profile.medications || ''
+        medications: profile.medications || '',
+        daily_calories: profile.daily_calories || ''
       })
     }
   }, [profile])
@@ -275,6 +278,16 @@ const DoctorPatientProfile = () => {
     })
   }
 
+  const handleCalorieGoalSelect = (goalData) => {
+    // تطبيق السعرات والهدف المختار من جدول الاقتراحات
+    setProfileForm({
+      ...profileForm,
+      daily_calories: goalData.calories.toString(),
+      goal: goalData.goal
+    })
+    toast.info(`تم تطبيق: ${goalData.label} - ${goalData.calories} سعرة حرارية`)
+  }
+
   const handleProfileSubmit = (e) => {
     e.preventDefault()
     const data = { ...profileForm }
@@ -282,6 +295,7 @@ const DoctorPatientProfile = () => {
     data.height = parseFloat(data.height) || 0
     data.current_weight = parseFloat(data.current_weight) || 0
     data.target_weight = data.target_weight ? parseFloat(data.target_weight) : null
+    data.daily_calories = data.daily_calories ? parseInt(data.daily_calories) : null
     updateProfileMutation.mutate(data)
   }
 
@@ -298,7 +312,8 @@ const DoctorPatientProfile = () => {
         goal: profile.goal || '',
         medical_conditions: profile.medical_conditions || '',
         dietary_restrictions: profile.dietary_restrictions || '',
-        medications: profile.medications || ''
+        medications: profile.medications || '',
+        daily_calories: profile.daily_calories || ''
       })
     }
   }
@@ -564,11 +579,11 @@ const DoctorPatientProfile = () => {
   }
 
   // دالة لحساب السعرات الحرارية اليومية
-  const calculateDailyCalories = (weight, height, gender, activityLevel, goal) => {
+  const calculateDailyCalories = (weight, height, gender, activityLevel, goal, patientAge = null) => {
     if (!weight || !height || !gender || !activityLevel) return null
     
-    // حساب العمر (افتراضي 30 سنة إذا لم يكن متوفراً)
-    const age = 30
+    // حساب العمر من بيانات المريض الفعلية
+    const age = patientAge || 30
     
     // حساب معدل الأيض الأساسي (BMR) باستخدام معادلة Mifflin-St Jeor
     let bmr
@@ -589,18 +604,11 @@ const DoctorPatientProfile = () => {
     
     const activityMultiplier = activityMultipliers[activityLevel] || 1.55
     
-    // حساب السعرات الحرارية اليومية الأساسية
+    // حساب السعرات الحرارية اليومية المطلوبة (استخدام TDEE مباشرة)
     let dailyCalories = bmr * activityMultiplier
     
-    // تعديل السعرات حسب الهدف
-    if (goal === 'lose_weight') {
-      dailyCalories = dailyCalories - 500 // عجز 500 سعرة حرارية لخسارة الوزن
-    } else if (goal === 'gain_weight') {
-      dailyCalories = dailyCalories + 500 // فائض 500 سعرة حرارية لزيادة الوزن
-    } else if (goal === 'build_muscle') {
-      dailyCalories = dailyCalories + 300 // فائض 300 سعرة حرارية لبناء العضلات
-    }
-    // للحفاظ على الوزن أو تحسين الصحة، لا تعديل
+    // استخدام TDEE مباشرة كالسعرات اليومية المطلوبة
+    // لا تعديل حسب الهدف - السعرات اليومية المطلوبة للحفاظ على الوزن الحالي
     
     return Math.round(dailyCalories)
   }
@@ -776,6 +784,19 @@ const DoctorPatientProfile = () => {
                           </div>
                           <small className="text-muted">محسوب حسب الطول والجنس</small>
                         </div>
+                      </div>
+                      
+                      {/* جدول تحديد الهدف والسعرات المقترحة */}
+                      <div className="row">
+                        <div className="col-12 mb-3">
+                          <GoalCalorieSuggestions 
+                            onCalorieSelect={handleCalorieGoalSelect}
+                            selectedGoal={profileForm.goal}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="row">
                         <div className="col-6 mb-3">
                           <label className="form-label">الهدف</label>
                           <select
@@ -809,11 +830,18 @@ const DoctorPatientProfile = () => {
                           </select>
                         </div>
                         <div className="col-6 mb-3">
-                          <small className="text-muted">السعرات الحرارية اليومية:</small>
-                          <div className="fw-bold text-warning">
-                            {calculateDailyCalories(profileForm.current_weight, profileForm.height, profileForm.gender, profileForm.activity_level, profileForm.goal) || '--'} سعرة حرارية
-                          </div>
-                          <small className="text-muted">محسوبة حسب الوزن والطول والنشاط والهدف</small>
+                          <label className="form-label">السعرات الحرارية اليومية المخصصة</label>
+                          <input
+                            type="number"
+                            name="daily_calories"
+                            className="form-control"
+                            value={profileForm.daily_calories}
+                            onChange={handleProfileChange}
+                            min="800"
+                            max="5000"
+                            placeholder="أدخل السعرات الحرارية المطلوبة"
+                          />
+                          <small className="text-muted">السعرات المحسوبة: {calculateDailyCalories(profileForm.current_weight, profileForm.height, profileForm.gender, profileForm.activity_level, profileForm.goal, calculateAge(profile.user?.date_of_birth)) || '--'} سعرة حرارية</small>
                         </div>
                       </div>
                       <div className="d-flex justify-content-end gap-2 mt-3">
@@ -897,8 +925,17 @@ const DoctorPatientProfile = () => {
                       <div className="col-6 mb-3">
                         <small className="text-muted">السعرات الحرارية اليومية:</small>
                         <div className="fw-bold text-warning">
-                          {calculateDailyCalories(profile.current_weight, profile.height, profile.gender, profile.activity_level, profile.goal) || '--'} سعرة حرارية
+                          {profile.daily_calories ? 
+                            `${profile.daily_calories} سعرة حرارية (مخصصة)` : 
+                            `${calculateDailyCalories(profile.current_weight, profile.height, profile.gender, profile.activity_level, profile.goal, calculateAge(profile.user?.date_of_birth)) || '--'} سعرة حرارية (محسوبة)`
+                          }
                         </div>
+                        {!profile.daily_calories && (
+                          <small className="text-muted">
+                            <i className="fas fa-calculator me-1"></i>
+                            محسوبة تلقائياً حسب الوزن والطول والنشاط والهدف
+                          </small>
+                        )}
                       </div>
                     </div>
                   </div>

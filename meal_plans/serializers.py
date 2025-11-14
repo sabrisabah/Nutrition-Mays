@@ -92,6 +92,7 @@ class MealSerializer(serializers.ModelSerializer):
     meal_type_name_ar = serializers.CharField(source='meal_type.name_ar', read_only=True)
     total_nutrition = serializers.SerializerMethodField()
     day_name = serializers.CharField(source='get_day_of_week_display', read_only=True)
+    other_ingredients_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Meal
@@ -99,6 +100,13 @@ class MealSerializer(serializers.ModelSerializer):
     
     def get_total_nutrition(self, obj):
         return obj.get_total_nutrition()
+    
+    def get_other_ingredients_count(self, obj):
+        """Calculate the number of ingredients beyond the first 3 displayed"""
+        total_ingredients = obj.ingredients.count()
+        if total_ingredients > 3:
+            return total_ingredients - 3
+        return 0
 
 
 class MealPlanSerializer(serializers.ModelSerializer):
@@ -107,11 +115,32 @@ class MealPlanSerializer(serializers.ModelSerializer):
     doctor_name = serializers.CharField(source='doctor.get_full_name', read_only=True)
     template_name = serializers.CharField(source='template.name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    diet_plan_display = serializers.SerializerMethodField()
     
     class Meta:
         model = MealPlan
         fields = '__all__'
         read_only_fields = ['doctor', 'delivered_at', 'acknowledged_at']
+    
+    def get_diet_plan_display(self, obj):
+        """ترجمة نوع النظام الغذائي للعربية"""
+        diet_translations = {
+            'keto': 'الكيتو',
+            'balanced': 'المتوازن',
+            'high_protein': 'عالي البروتين',
+            'low_carb': 'منخفض الكربوهيدرات',
+            'mediterranean': 'البحر الأبيض المتوسط',
+            'vegetarian': 'نباتي',
+            'vegan': 'نباتي صرف',
+            'paleo': 'الباليو',
+            'weight_loss': 'إنقاص وزن',
+            'weight_gain': 'زيادة وزن',
+            'muscle_building': 'بناء العضلات',
+            'diabetic': 'مرضى السكري',
+            'heart_healthy': 'صحة القلب',
+            'intermittent_fasting': 'الصيام المتقطع'
+        }
+        return diet_translations.get(obj.diet_plan, obj.diet_plan or 'غير محدد')
     
     def update(self, instance, validated_data):
         print(f"🔍 MealPlanSerializer.update called with data:", validated_data)

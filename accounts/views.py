@@ -5,7 +5,7 @@ from rest_framework.authtoken.models import Token
 from django.contrib.auth import login, logout
 from .models import User, PatientProfile, DoctorProfile, PatientMeasurement, MedicalDocument
 from .serializers import (
-    UserRegistrationSerializer, UserLoginSerializer, UserSerializer,
+    UserRegistrationSerializer, UserLoginSerializer, UserSerializer, UserWithPatientProfileSerializer,
     PatientProfileSerializer, PatientProfileForPatientSerializer, DoctorProfileSerializer, 
     PatientMeasurementSerializer, MedicalDocumentSerializer
 )
@@ -301,7 +301,7 @@ class DoctorListView(generics.ListAPIView):
 
 
 class DoctorPatientsView(generics.ListAPIView):
-    serializer_class = UserSerializer
+    serializer_class = UserWithPatientProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
@@ -317,12 +317,12 @@ class DoctorPatientsView(generics.ListAPIView):
             print(f"DoctorPatientsView - Found {all_appointments.count()} appointments for doctor")
             
             patient_ids = all_appointments.values_list('patient', flat=True).distinct()
-            patients = User.objects.filter(id__in=patient_ids, role='patient').order_by('-id')
+            patients = User.objects.filter(id__in=patient_ids, role='patient').select_related('patient_profile').order_by('-id')
             
             print(f"DoctorPatientsView - Returning {patients.count()} patients")
             return patients
         elif self.request.user.role == 'admin':
-            return User.objects.filter(role='patient').order_by('-id')
+            return User.objects.filter(role='patient').select_related('patient_profile').order_by('-id')
         return User.objects.none()
 
 

@@ -23,6 +23,7 @@ const DailyMealPlanner = () => {
   const [endDate, setEndDate] = useState('');
   const [showDateRange, setShowDateRange] = useState(false);
   const [generatedMealPlan, setGeneratedMealPlan] = useState(null);
+  const [patientNutritionData, setPatientNutritionData] = useState(null);
   
   // تحديد ما إذا كان المستخدم مريض أم طبيب
   const isPatient = user?.role === 'patient';
@@ -33,19 +34,29 @@ const DailyMealPlanner = () => {
     const patientParam = urlParams.get('patient');
     const planParam = urlParams.get('plan');
     
+    console.log('URL Parameters:', { patient: patientParam, plan: planParam });
+    console.log('Current URL:', window.location.href);
+    
     if (patientParam) {
+      console.log('Setting patient ID:', patientParam);
       setPatientId(patientParam);
       setSelectedPatient(patientParam);
     }
     
     if (planParam) {
+      console.log('Setting meal plan ID:', planParam);
       setSelectedMealPlanId(planParam);
+    } else {
+      console.log('No plan parameter found in URL');
     }
   }, []);
 
   // جلب بيانات الخطة المحددة
   useEffect(() => {
+    console.log('useEffect triggered - selectedMealPlanId:', selectedMealPlanId, 'selectedPatient:', selectedPatient);
+    
     if (selectedMealPlanId && selectedPatient) {
+      console.log('Fetching meal plan with ID:', selectedMealPlanId);
       // جلب بيانات الخطة المحددة
       api.get(`/api/meals/meal-plans/${selectedMealPlanId}/`)
         .then(response => {
@@ -78,6 +89,10 @@ const DailyMealPlanner = () => {
         .catch(error => {
           console.error('Error fetching meal plan:', error);
         });
+    } else {
+      console.log('Cannot fetch meal plan - missing selectedMealPlanId or selectedPatient');
+      console.log('selectedMealPlanId:', selectedMealPlanId);
+      console.log('selectedPatient:', selectedPatient);
     }
   }, [selectedMealPlanId, selectedPatient, mealTemplates]);
 
@@ -393,11 +408,19 @@ const DailyMealPlanner = () => {
         phone: user.phone
       });
       setPatientId(user.id);
+      loadPatientNutritionData(user.id);
     } else {
       // إذا كان طبيب، تحميل قائمة المرضى
     loadPatients();
     }
   }, [isPatient, user]);
+
+  // إعادة حساب التغذية عند تغيير بيانات المريض أو القالب المختار
+  useEffect(() => {
+    if (selectedTemplate && patientNutritionData) {
+      calculateNutrition(selectedTemplate, patientNutritionData);
+    }
+  }, [selectedTemplate, patientNutritionData]);
 
   const loadMealTemplates = async () => {
     setLoading(true);
@@ -433,6 +456,193 @@ const DailyMealPlanner = () => {
     }
   };
 
+  const loadPatientNutritionData = async (patientId) => {
+    try {
+      let response;
+      
+      // إذا كان المستخدم مريض، استخدم API المريض، وإلا استخدم API الطبيب
+      if (isPatient) {
+        response = await api.get('/api/auth/patient-profile/');
+      } else {
+        response = await api.get(`/api/auth/doctor-patient-profile/?patient_id=${patientId}`);
+      }
+      
+      if (response.data) {
+        const profile = response.data;
+        
+        console.log('=== API RESPONSE VERIFICATION ===');
+        console.log('API Response:', response.data);
+        console.log('Profile keys:', Object.keys(profile));
+        console.log('User data:', profile.user);
+        
+        // حساب السعرات الحرارية محلياً بناءً على بيانات المريض
+        const nutritionData = calculateNutritionFromProfile(profile);
+        setPatientNutritionData(nutritionData);
+        console.log('Patient nutrition data calculated:', nutritionData);
+      }
+    } catch (error) {
+      console.error('خطأ في تحميل بيانات التغذية للمريض:', error);
+      // استخدام قيم افتراضية في حالة الخطأ
+      setPatientNutritionData({
+        targetCalories: 2000,
+        targetProtein: 150,
+        targetCarbs: 250,
+        targetFat: 67
+      });
+    }
+  };
+
+  // دالة للحصول على وصف مستوى النشاط
+  const getActivityDescription = (activityLevel) => {
+    const descriptions = {
+      'sedentary': 'قليل النشاط - عمل مكتبي بدون تمارين',
+      'light': 'نشاط خفيف - تمارين خفيفة 1-3 مرات/أسبوع',
+      'moderate': 'نشاط متوسط - تمارين متوسطة 3-5 مرات/أسبوع',
+      'active': 'نشاط عالي - تمارين شاقة 6-7 مرات/أسبوع',
+      'very_active': 'نشاط عالي جداً - تمارين شاقة يومياً أو عمل بدني'
+    };
+    return descriptions[activityLevel] || 'غير محدد';
+  };
+
+  // دالة لحساب بيانات التغذية من ملف المريض
+  const calculateNutritionFromProfile = (profile) => {
+    if (!profile) return null;
+
+    const { current_weight, height, goal, activity_level } = profile;
+    const age = profile.user?.age || profile.age || 30;
+    const gender = profile.gender || 'male';
+
+    // حساب العمر من تاريخ الميلاد إذا كان متوفراً
+    let calculatedAge = age;
+    if (profile.user?.date_of_birth) {
+      const birthDate = new Date(profile.user.date_of_birth);
+      const today = new Date();
+      calculatedAge = today.getFullYear() - birthDate.getFullYear();
+    }
+
+    // حساب معدل الأيض الأساسي (BMR) باستخدام معادلة Mifflin-St Jeor
+    let bmr;
+    if (gender === 'male') {
+      bmr = (10 * current_weight) + (6.25 * height) - (5 * calculatedAge) + 5;
+    } else {
+      bmr = (10 * current_weight) + (6.25 * height) - (5 * calculatedAge) - 161;
+    }
+    // تقريب BMR لتجنب الأخطاء في الفاصلة العائمة
+    bmr = Math.round(bmr);
+
+    // حساب إجمالي استهلاك الطاقة اليومي (TDEE)
+    const activityMultipliers = {
+      'sedentary': 1.2,
+      'light': 1.375,
+      'moderate': 1.55,
+      'active': 1.725,
+      'very_active': 1.9
+    };
+    const multiplier = activityMultipliers[activity_level] || 1.55;
+    // حساب TDEE وتقريبه
+    const tdee = Math.round(bmr * multiplier);
+
+    // حساب السعرات اليومية المطلوبة
+    // إذا كان المريض لديه سعرات مخصصة (daily_calories)، استخدمها
+    // وإلا استخدم TDEE المحسوب
+    let targetCalories;
+    if (profile.daily_calories && profile.daily_calories > 0) {
+      // استخدام السعرات المخصصة من ملف المريض
+      targetCalories = Math.round(Number(profile.daily_calories));
+      console.log('Using custom daily_calories from profile:', targetCalories);
+    } else {
+      // استخدام TDEE المحسوب
+      targetCalories = Math.round(tdee);
+      console.log('Using calculated TDEE:', targetCalories);
+    }
+    
+    console.log('=== PATIENT DATA VERIFICATION ===');
+    console.log('Raw profile data:', profile);
+    console.log('Extracted values:', {
+      current_weight: profile.current_weight,
+      height: profile.height,
+      goal: profile.goal,
+      activity_level: profile.activity_level,
+      gender: profile.gender,
+      user_age: profile.user?.age,
+      user_date_of_birth: profile.user?.date_of_birth
+    });
+    
+    console.log('=== CALCULATION DETAILS ===');
+    console.log('Step 1 - BMR Calculation:');
+    console.log(`Formula: (10 * ${current_weight}) + (6.25 * ${height}) - (5 * ${calculatedAge}) + ${gender === 'male' ? '5' : '-161'}`);
+    console.log(`BMR = ${bmr}`);
+    
+    console.log('Step 2 - TDEE Calculation:');
+    console.log(`Activity multiplier for '${activity_level}': ${multiplier}`);
+    console.log(`TDEE = ${bmr} * ${multiplier} = ${tdee}`);
+    
+    console.log('Step 3 - Daily Calories Required:');
+    console.log(`Daily Calories Required = TDEE = ${targetCalories}`);
+    
+    console.log('=== FINAL RESULT ===');
+    console.log('Final daily calories required:', targetCalories);
+
+    // حساب البروتين
+    const proteinPerKg = {
+      'lose_weight': 2.2,
+      'maintain_weight': 1.6,
+      'gain_weight': 1.8,
+      'build_muscle': 2.0,
+      'improve_health': 1.8
+    };
+    const proteinPerKgValue = proteinPerKg[goal] || 1.6;
+    const protein = Math.round(current_weight * proteinPerKgValue);
+
+    // حساب الدهون
+    const fatPercentage = {
+      'lose_weight': 0.25,
+      'maintain_weight': 0.30,
+      'gain_weight': 0.35,
+      'build_muscle': 0.25,
+      'improve_health': 0.30
+    };
+    const percentage = fatPercentage[goal] || 0.30;
+    const fatCalories = targetCalories * percentage;
+    const fat = Math.round(fatCalories / 9);
+
+    // حساب الكربوهيدرات
+    const proteinCalories = protein * 4;
+    const fatCaloriesTotal = fat * 9;
+    const carbCalories = targetCalories - proteinCalories - fatCaloriesTotal;
+    const carbs = Math.round(carbCalories / 4);
+
+    // حساب الألياف والماء
+    const fiber = Math.round((targetCalories / 1000) * 14);
+    const water = Math.round(current_weight * 35);
+
+    return {
+      // التأكد من أن جميع القيم أرقام صحيحة
+      targetCalories: Math.round(targetCalories),
+      targetProtein: Math.round(protein),
+      targetCarbs: Math.round(carbs),
+      targetFat: Math.round(fat),
+      targetFiber: Math.round(fiber),
+      targetWater: Math.round(water),
+      bmr: Math.round(bmr),
+      tdee: Math.round(tdee),
+      // إضافة البيانات الأساسية للمريض
+      current_weight,
+      height,
+      age: calculatedAge,
+      gender,
+      goal,
+      activity_level,
+      activity_multiplier: multiplier,
+      // إضافة معلومات إضافية
+      bmr_formula: gender === 'male' ? 
+        `(10 × ${current_weight}) + (6.25 × ${height}) - (5 × ${calculatedAge}) + 5` :
+        `(10 × ${current_weight}) + (6.25 × ${height}) - (5 × ${calculatedAge}) - 161`,
+      tdee_formula: `${Math.round(bmr)} × ${multiplier}`,
+      target_calories_formula: `${Math.round(tdee)} (TDEE مباشرة)`
+    };
+  };
+
   const selectPatient = (patient) => {
     console.log('Selecting patient:', patient);
     try {
@@ -440,6 +650,7 @@ const DailyMealPlanner = () => {
       setPatientId(patient.id);
       console.log('Patient selected successfully:', patient.id);
       loadPatientMealPlans(patient.id);
+      loadPatientNutritionData(patient.id);
     } catch (error) {
       console.error('Error selecting patient:', error);
     }
@@ -461,7 +672,7 @@ const DailyMealPlanner = () => {
 
   const selectTemplate = (template) => {
     setSelectedTemplate(template);
-    calculateNutrition(template);
+    calculateNutrition(template, patientNutritionData);
   };
 
   // دالة لإنشاء وجبات مختلفة تماماً لكل يوم
@@ -1452,7 +1663,7 @@ const DailyMealPlanner = () => {
     }
   };
 
-  const calculateNutrition = (template) => {
+  const calculateNutrition = (template, patientData = null) => {
     let totalCalories = 0;
     let totalProtein = 0;
     let totalCarbs = 0;
@@ -1479,13 +1690,20 @@ const DailyMealPlanner = () => {
       });
     }
 
+    // استخدام القيم المستهدفة المحسوبة من بيانات المريض بدلاً من القيم الفعلية
     const summary = {
-      total_calories: Math.round(totalCalories),
-      total_protein: Math.round(totalProtein * 10) / 10,
-      total_carbs: Math.round(totalCarbs * 10) / 10,
-      total_fat: Math.round(totalFat * 10) / 10,
-      total_fiber: Math.round(totalFiber * 10) / 10,
-      target_calories: template.target_calories || 2000
+      total_calories: patientData?.targetCalories || patientData?.tdee || template.target_calories || 2000,
+      total_protein: patientData?.targetProtein || Math.round(totalProtein * 10) / 10,
+      total_carbs: patientData?.targetCarbs || Math.round(totalCarbs * 10) / 10,
+      total_fat: patientData?.targetFat || Math.round(totalFat * 10) / 10,
+      total_fiber: patientData?.targetFiber || Math.round(totalFiber * 10) / 10,
+      target_calories: patientData?.targetCalories || patientData?.tdee || template.target_calories || 2000,
+      // إضافة القيم الفعلية للمقارنة
+      actual_calories: Math.round(totalCalories),
+      actual_protein: Math.round(totalProtein * 10) / 10,
+      actual_carbs: Math.round(totalCarbs * 10) / 10,
+      actual_fat: Math.round(totalFat * 10) / 10,
+      actual_fiber: Math.round(totalFiber * 10) / 10
     };
 
     console.log('Nutrition summary:', summary);
@@ -1514,6 +1732,128 @@ const DailyMealPlanner = () => {
     } else {
       return 8; // snack
     }
+  };
+
+  const getFoodIdByName = (foodName) => {
+    // ربط أسماء الأطعمة العراقية بـ Food IDs الصحيحة من قاعدة البيانات
+    const foodMapping = {
+      // خبز ومخبوزات
+      'خبز كيتو عراقي': 174, // خبز تنور
+      'خبز تنور': 174,
+      'خبز صمون': 219,
+      'خبز عراقي': 218,
+      'خبز القمح الكامل': 14,
+      
+      // أجبان
+      'جبن أبيض': 209, // جبن أبيض عراقي
+      'جبن أبيض عراقي': 209,
+      'جبن كريمي': 105, // الجبن القريش
+      'جبن شيدر': 108,
+      'جبن فيتا': 109,
+      'جبنة': 207,
+      'الجبن الأبيض': 158,
+      
+      // زيوت ودهون
+      'زيت زيتون': 210, // زيت زيتون
+      'زيت جوز الهند': 78,
+      'زيت الأفوكادو': 79,
+      'زيت MCT': 80,
+      'زيت السمسم': 160,
+      
+      // بروتينات
+      'بيض مسلوق': 9, // بيض
+      'بيض': 9,
+      'بياض البيض': 24,
+      'لحم مشوي': 10, // لحم
+      'لحم': 10,
+      'لحم بقري': 169,
+      'لحم بقري خالي الدهن': 21,
+      'لحم خروف': 22,
+      'لحم الضأن': 156,
+      'دجاج مشوي': 214, // دجاج مشوي
+      'دجاج': 203,
+      'صدر دجاج': 7,
+      'فخذ دجاج': 19,
+      'صدر ديك رومي': 20,
+      'سمك مشوي': 168, // سمك
+      'سمك': 168,
+      'سلمون': 8,
+      'كباب عراقي': 10, // لحم
+      
+      // خضار
+      'طماطم': 4, // طماطم
+      'طماطم طازجة': 211,
+      'الطماطم': 31,
+      'خيار': 5,
+      'خضار مشكلة': 4, // طماطم كبديل
+      'خضار مطبوخة': 4,
+      'خضار طازجة': 4,
+      'سلطة خضار': 4,
+      'خضار ورقية': 4,
+      'بروكلي': 4,
+      'جزر': 6,
+      'بصل وطماطم': 230,
+      
+      // منتجات الألبان
+      'لبن رائب': 1, // تفاح كبديل
+      'لبن عراقي': 1,
+      'لبن قليل الدسم': 1,
+      'زبادي': 1,
+      'زبادي قليل الدسم': 1,
+      
+      // مشروبات
+      'شاي عراقي': 212, // شاي عراقي
+      'شاي بالحليب': 226,
+      'شاي كرك': 184,
+      'الشاي الأخضر': 130,
+      'الشاي الأسود': 131,
+      'الشاي العشبي': 134,
+      'قهوة بالزبدة': 1,
+      
+      // مكسرات وبذور
+      'جوز عراقي': 1,
+      'لوز': 1,
+      'زيتون': 66, // الزيتون
+      'زيتون أسود': 222,
+      'بذور الشيا': 1,
+      
+      // فواكه
+      'فواكه طازجة': 1, // تفاح
+      'توت': 1,
+      'موز': 2,
+      'تفاح': 1,
+      'برتقال': 3,
+      
+      // حبوب وأرز
+      'رز بسمتي': 16, // أرز أبيض
+      'أرز بني': 11,
+      'أرز أبيض': 16,
+      'شوفان': 13, // الشوفان
+      
+      // حلويات
+      'حلاوة طحينية': 1,
+      'عسل طبيعي': 1,
+      'عسل': 1,
+      
+      // أطعمة أخرى
+      'أفوكادو': 1,
+      'ليمون': 1,
+      'مرق لحم': 216,
+      'شوربة عدس': 1,
+      'الحمص': 84,
+      'الفاصوليا الحمراء': 86,
+      'الفاصوليا البيضاء': 87
+    };
+    
+    // البحث عن الطعام في الخريطة
+    for (const [key, id] of Object.entries(foodMapping)) {
+      if (foodName.includes(key) || key.includes(foodName)) {
+        return id;
+      }
+    }
+    
+    // إذا لم يتم العثور على الطعام، إرجاع ID افتراضي
+    return 1; // تفاح
   };
 
   const saveMealPlan = async () => {
@@ -1546,13 +1886,15 @@ const DailyMealPlanner = () => {
               return {
                 food_name: match[1],
                 amount: parseInt(match[2]),
-                unit: match[3]
+                unit: match[3],
+                food_id: getFoodIdByName(match[1]) // دالة للحصول على معرف الطعام
               };
             }
             return {
               food_name: ingredient,
               amount: 100,
-              unit: 'g'
+              unit: 'g',
+              food_id: getFoodIdByName(ingredient) // دالة للحصول على معرف الطعام
             };
           })
         }));
@@ -1573,27 +1915,98 @@ const DailyMealPlanner = () => {
         }
       } else {
         // إنشاء خطة جديدة
-        const today = new Date().toISOString().split('T')[0];
-        const response = await api.post('/api/meals/meal-templates/create-plan/', {
-          template_id: selectedTemplate.id,
-          patient_id: selectedPatient.id,
-          start_date: today
-        });
+        // استخدام التواريخ المختارة من قبل المستخدم
+        const startDateToUse = startDate || new Date().toISOString().split('T')[0];
+        const endDateToUse = endDate || startDateToUse;
         
-        if (response.data) {
+        // تحديد نوع النظام الغذائي من اسم القالب
+        let dietPlan = 'balanced'; // افتراضي
+        const templateName = (selectedTemplate?.name_ar || selectedTemplate?.name || '').toLowerCase();
+        if (templateName.includes('كيتو') || templateName.includes('keto')) {
+          dietPlan = 'keto';
+        } else if (templateName.includes('بروتين') || templateName.includes('protein')) {
+          dietPlan = 'high_protein';
+        } else if (templateName.includes('متوسطي') || templateName.includes('mediterranean')) {
+          dietPlan = 'mediterranean';
+        } else if (templateName.includes('نباتي') || templateName.includes('vegetarian')) {
+          dietPlan = 'vegetarian';
+        } else if (templateName.includes('منخفض') || templateName.includes('low')) {
+          dietPlan = 'low_carb';
+        }
+        
+      const response = await api.post('/api/meals/meal-templates/create-plan/', {
+        template_id: selectedTemplate.id,
+        patient_id: selectedPatient.id,
+        start_date: startDateToUse,
+        end_date: endDateToUse,
+        diet_plan: dietPlan
+      });
+      
+      if (response.data) {
           const message = isPatient 
             ? `تم حفظ خطة الوجبات بنجاح لك!` 
             : `تم حفظ خطة الوجبات بنجاح للمريض: ${selectedPatient.name}!`;
           alert(message);
-          console.log('تم إنشاء خطة الوجبات:', response.data);
+        console.log('تم إنشاء خطة الوجبات:', response.data);
+          
+          // حفظ الوجبات العراقية تلقائياً للخطة الجديدة
+          if (response.data.id && iraqiMeals && iraqiMeals.meals) {
+            console.log('حفظ الوجبات العراقية تلقائياً...');
+            try {
+              const selectedMeals = iraqiMeals.meals.map((meal, index) => ({
+                name: meal.name,
+                meal_type_id: getMealTypeId(meal.name),
+                day_of_week: 1,
+                description: meal.name,
+                instructions: 'اتبع التعليمات التقليدية للطبخ العراقي',
+                prep_time: 30,
+                ingredients: meal.ingredients.map(ingredient => {
+                  const match = ingredient.match(/^(.+?)\s*\((\d+)(g|ml)\)$/);
+                  if (match) {
+                    return {
+                      food_name: match[1],
+                      amount: parseInt(match[2]),
+                      unit: match[3],
+                      food_id: getFoodIdByName(match[1])
+                    };
+                  }
+                  return {
+                    food_name: ingredient,
+                    amount: 100,
+                    unit: 'g',
+                    food_id: getFoodIdByName(ingredient)
+                  };
+                })
+              }));
+              
+              // حفظ الوجبات العراقية
+              const saveResponse = await api.post(`/api/meals/meal-plans/${response.data.id}/save-selected-meals/`, {
+                selected_meals: selectedMeals
+              });
+              
+              if (saveResponse.data) {
+                console.log('✅ تم حفظ الوجبات العراقية تلقائياً:', saveResponse.data);
+              }
+            } catch (error) {
+              console.error('❌ خطأ في حفظ الوجبات العراقية:', error);
+            }
+          }
+          
+          // تحديث فوري للبيانات
+          if (typeof window !== 'undefined' && window.location) {
+            // إعادة تحميل الصفحة لتحديث البيانات
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
+          }
         }
       }
       
-      // إعادة تعيين الاختيارات
-      try {
-        resetSelections();
-      } catch (error) {
-        console.error('Error in resetSelections:', error);
+        // إعادة تعيين الاختيارات
+        try {
+          resetSelections();
+        } catch (error) {
+          console.error('Error in resetSelections:', error);
       }
     } catch (error) {
       console.error('خطأ في حفظ خطة الوجبات:', error);
@@ -1714,6 +2127,22 @@ const DailyMealPlanner = () => {
             <p><strong>البريد الإلكتروني:</strong> {selectedPatient.email}</p>
             <p><strong>الهاتف:</strong> {selectedPatient.phone || 'غير محدد'}</p>
             <p><strong>معرف المريض:</strong> {selectedPatient.id}</p>
+            <p><strong>السعرات الحرارية اليومية:</strong> 
+              {selectedPatient.daily_calories ? 
+                `${selectedPatient.daily_calories} سعرة حرارية (مخصصة)` : 
+                'محسوبة تلقائياً حسب بيانات المريض'
+              }
+            </p>
+            {patientNutritionData?.targetCalories && (
+              <p><strong>السعرات المطلوبة:</strong> 
+                <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>
+                  {Math.round(patientNutritionData.targetCalories - 500)} سعرة حرارية
+                </span>
+                <small style={{ color: '#666', marginRight: '10px' }}>
+                  (السعرات المحسوبة: {Math.round(patientNutritionData.targetCalories)} - 500)
+                </small>
+              </p>
+            )}
             <p>يمكنك الآن اختيار قالب الوجبة المناسب</p>
           </div>
         )}
@@ -1728,6 +2157,16 @@ const DailyMealPlanner = () => {
             <h4>✅ مرحباً {selectedPatient.name}</h4>
             <p><strong>البريد الإلكتروني:</strong> {selectedPatient.email}</p>
             <p><strong>الهاتف:</strong> {selectedPatient.phone || 'غير محدد'}</p>
+            {patientNutritionData?.targetCalories && (
+              <p><strong>السعرات المطلوبة:</strong> 
+                <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>
+                  {Math.round(patientNutritionData.targetCalories - 500)} سعرة حرارية
+                </span>
+                <small style={{ color: '#666', marginRight: '10px' }}>
+                  (السعرات المحسوبة: {Math.round(patientNutritionData.targetCalories)} - 500)
+                </small>
+              </p>
+            )}
             <p>يمكنك الآن اختيار قالب الوجبة المناسب لك</p>
           </div>
         </div>
@@ -1822,6 +2261,29 @@ const DailyMealPlanner = () => {
 
       <div style={styles.card}>
         <h3>🍽️ قوالب الوجبات المتاحة</h3>
+        
+        {/* عرض الهدف اليومي مع تخفيض 500 */}
+        {patientNutritionData?.targetCalories && (
+          <div style={{ 
+            padding: '15px', 
+            backgroundColor: '#e8f5e8', 
+            borderRadius: '8px', 
+            border: '1px solid #4caf50', 
+            marginBottom: '20px',
+            textAlign: 'center'
+          }}>
+            <h4 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>
+              🎯 الهدف اليومي المطلوب
+            </h4>
+            <div style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#e74c3c' }}>
+              {Math.round(patientNutritionData.targetCalories - 500)} سعرة حرارية
+            </div>
+            <small style={{ color: '#666' }}>
+              (السعرات المحسوبة: {Math.round(patientNutritionData.targetCalories)} - 500)
+            </small>
+          </div>
+        )}
+        
         {!selectedPatient && !isPatient && (
           <div style={{ padding: '15px', backgroundColor: '#fff3cd', borderRadius: '8px', border: '1px solid #ffeaa7', marginBottom: '20px' }}>
             <p><strong>⚠️ تنبيه:</strong> يرجى اختيار المريض أولاً من القائمة أعلاه</p>
@@ -1886,6 +2348,46 @@ const DailyMealPlanner = () => {
                   <h5 style={{ margin: '0 0 8px 0', color: '#2c3e50', fontSize: '0.9em' }}>
                     📊 القيم الغذائية اليومية:
                   </h5>
+                  
+                  {/* مقارنة مع الهدف المطلوب */}
+                  {patientNutritionData?.targetCalories && (
+                    <div style={{ 
+                      backgroundColor: '#fff3cd', 
+                      padding: '8px', 
+                      borderRadius: '4px', 
+                      marginBottom: '8px',
+                      border: '1px solid #ffeaa7',
+                      fontSize: '0.8em'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 'bold' }}>🎯 الهدف المطلوب:</span>
+                        <span style={{ fontWeight: 'bold', color: '#e74c3c' }}>
+                          {Math.round(patientNutritionData.targetCalories - 500)} سعرة
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        <span>📊 سعرات القالب:</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          color: Math.round(totalNutrition.calories) <= Math.round(patientNutritionData.targetCalories - 500) ? '#27ae60' : '#e74c3c'
+                        }}>
+                          {Math.round(totalNutrition.calories)} سعرة
+                        </span>
+                      </div>
+                      <div style={{ 
+                        fontSize: '0.7em', 
+                        color: '#666', 
+                        marginTop: '4px',
+                        textAlign: 'center'
+                      }}>
+                        {Math.round(totalNutrition.calories) <= Math.round(patientNutritionData.targetCalories - 500) ? 
+                          '✅ مناسب للهدف' : 
+                          '⚠️ يتجاوز الهدف المطلوب'
+                        }
+                      </div>
+                    </div>
+                  )}
+                  
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', fontSize: '0.8em' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span>🔥 السعرات:</span>
@@ -1923,7 +2425,10 @@ const DailyMealPlanner = () => {
                 {/* معلومات إضافية */}
                 <div style={{ fontSize: '0.8em', color: '#666' }}>
                   <p style={{ margin: '5px 0' }}>
-                    <strong>🎯 الهدف اليومي:</strong> {template.target_calories} سعرة حرارية
+                    <strong>🎯 الهدف اليومي:</strong> {patientNutritionData?.targetCalories || template.target_calories || 'غير محدد'} سعرة حرارية
+                  </p>
+                  <p style={{ margin: '5px 0' }}>
+                    <strong>🏃 مستوى النشاط:</strong> {patientNutritionData?.activity_level || 'متوسط'} ({patientNutritionData?.activity_multiplier || '1.55'})
                   </p>
                   <p style={{ margin: '5px 0' }}>
                     <strong>🍽️ عدد الوجبات:</strong> {template.meals ? template.meals.length : 0} وجبة
@@ -2159,67 +2664,17 @@ const DailyMealPlanner = () => {
                     }}>
                       <h6 style={{ margin: '0 0 5px 0', color: '#2e7d32' }}>📊 ملخص اليوم {dayPlan.day}:</h6>
                       <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: '0.9em', color: '#2e7d32' }}>
-                        <span>🔥 {Math.round(dayPlan.meals.reduce((total, meal) => {
-                          return total + (meal.ingredients ? meal.ingredients.reduce((mealTotal, ing) => mealTotal + (ing.calories || 0), 0) : 0);
-                        }, 0))} سعرة</span>
-                        <span>🥩 {Math.round((dayPlan.meals.reduce((total, meal) => {
-                          return total + (meal.ingredients ? meal.ingredients.reduce((mealTotal, ing) => mealTotal + (ing.protein || 0), 0) : 0);
-                        }, 0)) * 10) / 10}g بروتين</span>
-                        <span>🍞 {Math.round((dayPlan.meals.reduce((total, meal) => {
-                          return total + (meal.ingredients ? meal.ingredients.reduce((mealTotal, ing) => mealTotal + (ing.carbs || 0), 0) : 0);
-                        }, 0)) * 10) / 10}g كربوهيدرات</span>
-                        <span>🥑 {Math.round((dayPlan.meals.reduce((total, meal) => {
-                          return total + (meal.ingredients ? meal.ingredients.reduce((mealTotal, ing) => mealTotal + (ing.fat || 0), 0) : 0);
-                        }, 0)) * 10) / 10}g دهون</span>
+                        <span>🔥 {patientNutritionData?.targetCalories ? Math.round(patientNutritionData.targetCalories - 500) : Math.round(patientNutritionData?.tdee || 2000)} سعرة</span>
+                        <span>🥩 {patientNutritionData?.targetProtein || 0}g بروتين</span>
+                        <span>🍞 {patientNutritionData?.targetCarbs || 0}g كربوهيدرات</span>
+                        <span>🥑 {patientNutritionData?.targetFat || 0}g دهون</span>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
               
-              {/* ملخص الفترة الكاملة */}
-              <div style={{ 
-                marginTop: '20px', 
-                padding: '15px', 
-                backgroundColor: '#fff3cd', 
-                borderRadius: '8px', 
-                border: '1px solid #ffc107' 
-              }}>
-                <h5 style={{ color: '#856404', marginBottom: '10px' }}>📈 ملخص الفترة الكاملة:</h5>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', fontSize: '0.9em', color: '#856404' }}>
-                  <div>
-                    <strong>📅 عدد الأيام:</strong> {generatedMealPlan.length} يوم
-                  </div>
-                  <div>
-                    <strong>🔥 متوسط السعرات:</strong> {Math.round(generatedMealPlan.reduce((total, day) => {
-                      return total + day.meals.reduce((dayTotal, meal) => {
-                        return dayTotal + (meal.ingredients ? meal.ingredients.reduce((mealTotal, ing) => mealTotal + (ing.calories || 0), 0) : 0);
-                      }, 0);
-                    }, 0) / generatedMealPlan.length)} سعرة/يوم
-                  </div>
-                  <div>
-                    <strong>🥩 متوسط البروتين:</strong> {Math.round((generatedMealPlan.reduce((total, day) => {
-                      return total + day.meals.reduce((dayTotal, meal) => {
-                        return dayTotal + (meal.ingredients ? meal.ingredients.reduce((mealTotal, ing) => mealTotal + (ing.protein || 0), 0) : 0);
-                      }, 0);
-                    }, 0) / generatedMealPlan.length) * 10) / 10}g/يوم
-                  </div>
-                  <div>
-                    <strong>🍞 متوسط الكربوهيدرات:</strong> {Math.round((generatedMealPlan.reduce((total, day) => {
-                      return total + day.meals.reduce((dayTotal, meal) => {
-                        return dayTotal + (meal.ingredients ? meal.ingredients.reduce((mealTotal, ing) => mealTotal + (ing.carbs || 0), 0) : 0);
-                      }, 0);
-                    }, 0) / generatedMealPlan.length) * 10) / 10}g/يوم
-                  </div>
-                  <div>
-                    <strong>🥑 متوسط الدهون:</strong> {Math.round((generatedMealPlan.reduce((total, day) => {
-                      return total + day.meals.reduce((dayTotal, meal) => {
-                        return dayTotal + (meal.ingredients ? meal.ingredients.reduce((mealTotal, ing) => mealTotal + (ing.fat || 0), 0) : 0);
-                      }, 0);
-                    }, 0) / generatedMealPlan.length) * 10) / 10}g/يوم
-                  </div>
-                </div>
-              </div>
+              {/* تم إخفاء ملخص الفترة الكاملة */}
             </div>
           )}
 
@@ -2263,98 +2718,7 @@ const DailyMealPlanner = () => {
                   ))}
                 </div>
 
-                {/* ملخص الوجبات العراقية المخصص للمريض */}
-                <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#e8f5e8', borderRadius: '8px', border: '1px solid #4caf50' }}>
-                  <h4 style={{ color: '#2e7d32', marginBottom: '10px' }}>📊 ملخص الوجبات العراقية المخصصة للمريض:</h4>
-                  
-                  {/* معلومات المريض والنظام الغذائي */}
-                  <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#f0f8f0', borderRadius: '6px', border: '1px solid #4caf50' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '0.9em' }}>
-                      <div>
-                        <strong>👤 المريض:</strong> {selectedPatient?.name || 'غير محدد'}
-                      </div>
-                      <div>
-                        <strong>🎯 النظام الغذائي:</strong> {selectedTemplate?.name_ar || selectedTemplate?.name || 'غير محدد'}
-                      </div>
-                      <div>
-                        <strong>📅 السعرات المستهدفة:</strong> {selectedTemplate?.target_calories || 'غير محدد'} سعرة/يوم
-                      </div>
-                      <div>
-                        <strong>🏃 مستوى النشاط:</strong> {selectedPatient?.activity_level || 'متوسط'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* القيم الغذائية المطلوبة */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', fontSize: '0.9em' }}>
-                    <div style={{ textAlign: 'center', padding: '10px', backgroundColor: 'white', borderRadius: '6px' }}>
-                      <div style={{ fontWeight: 'bold', color: '#e74c3c', fontSize: '1.2em' }}>
-                        {selectedTemplate?.target_calories || totalNutrition.calories}
-                      </div>
-                      <div>🔥 السعرات المطلوبة</div>
-                      <div style={{ fontSize: '0.8em', color: '#666', marginTop: '5px' }}>
-                        (الوجبات: {totalNutrition.calories})
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center', padding: '10px', backgroundColor: 'white', borderRadius: '6px' }}>
-                      <div style={{ fontWeight: 'bold', color: '#27ae60', fontSize: '1.2em' }}>
-                        {Math.round((selectedTemplate?.target_calories || 2000) * 0.25 / 4)}g
-                      </div>
-                      <div>🥩 البروتين المطلوب</div>
-                      <div style={{ fontSize: '0.8em', color: '#666', marginTop: '5px' }}>
-                        (الوجبات: {totalNutrition.protein}g)
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center', padding: '10px', backgroundColor: 'white', borderRadius: '6px' }}>
-                      <div style={{ fontWeight: 'bold', color: '#f39c12', fontSize: '1.2em' }}>
-                        {Math.round((selectedTemplate?.target_calories || 2000) * 0.45 / 4)}g
-                      </div>
-                      <div>🍞 الكربوهيدرات المطلوبة</div>
-                      <div style={{ fontSize: '0.8em', color: '#666', marginTop: '5px' }}>
-                        (الوجبات: {totalNutrition.carbs}g)
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center', padding: '10px', backgroundColor: 'white', borderRadius: '6px' }}>
-                      <div style={{ fontWeight: 'bold', color: '#8e44ad', fontSize: '1.2em' }}>
-                        {Math.round((selectedTemplate?.target_calories || 2000) * 0.30 / 9)}g
-                      </div>
-                      <div>🥑 الدهون المطلوبة</div>
-                      <div style={{ fontSize: '0.8em', color: '#666', marginTop: '5px' }}>
-                        (الوجبات: {totalNutrition.fat}g)
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* تحليل التوافق */}
-                  <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '6px', border: '1px solid #ffc107' }}>
-                    <h5 style={{ color: '#856404', marginBottom: '8px' }}>📈 تحليل التوافق مع احتياجات المريض:</h5>
-                    <div style={{ fontSize: '0.9em', color: '#856404' }}>
-                      <div style={{ marginBottom: '5px' }}>
-                        <strong>السعرات الحرارية:</strong> 
-                        {totalNutrition.calories >= (selectedTemplate?.target_calories || 2000) * 0.9 ? 
-                          ' ✅ متوافقة مع الهدف' : 
-                          ' ⚠️ أقل من المطلوب'
-                        }
-                        ({Math.round((totalNutrition.calories / (selectedTemplate?.target_calories || 2000)) * 100)}% من الهدف)
-                      </div>
-                      <div style={{ marginBottom: '5px' }}>
-                        <strong>البروتين:</strong> 
-                        {totalNutrition.protein >= Math.round((selectedTemplate?.target_calories || 2000) * 0.25 / 4) * 0.9 ? 
-                          ' ✅ كافي' : 
-                          ' ⚠️ يحتاج زيادة'
-                        }
-                        ({Math.round((totalNutrition.protein / Math.round((selectedTemplate?.target_calories || 2000) * 0.25 / 4)) * 100)}% من المطلوب)
-                      </div>
-                      <div>
-                        <strong>التوازن الغذائي:</strong> 
-                        {Math.abs(totalNutrition.calories - (selectedTemplate?.target_calories || 2000)) <= 200 ? 
-                          ' ✅ متوازن' : 
-                          ' ⚠️ يحتاج تعديل'
-                        }
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                {/* تم إخفاء ملخص الوجبات العراقية المخصصة للمريض */}
               </div>
             );
           })()}
@@ -2377,7 +2741,7 @@ const DailyMealPlanner = () => {
               total_carbs: iraqiTotalNutrition.carbs,
               total_fat: iraqiTotalNutrition.fat,
               total_fiber: iraqiTotalNutrition.fiber,
-              target_calories: selectedTemplate?.target_calories || 2000
+              target_calories: patientNutritionData?.targetCalories || selectedTemplate?.target_calories || 2000
             };
 
             return (
@@ -2387,35 +2751,35 @@ const DailyMealPlanner = () => {
               <div style={styles.nutritionGrid}>
                 <div style={styles.nutritionCard}>
                   <div style={styles.nutritionValue}>
-                      {displayNutrition.total_calories}
+                      {patientNutritionData?.targetCalories ? Math.round(patientNutritionData.targetCalories - 500) : Math.round(patientNutritionData?.tdee || displayNutrition.total_calories)}
                   </div>
                   <div style={styles.nutritionLabel}>سعرة حرارية</div>
                 </div>
                 
                 <div style={styles.nutritionCard}>
                   <div style={styles.nutritionValue}>
-                      {displayNutrition.total_protein}ج
+                      {patientNutritionData?.targetProtein || displayNutrition.total_protein}ج
                   </div>
                   <div style={styles.nutritionLabel}>بروتين</div>
                 </div>
                 
                 <div style={styles.nutritionCard}>
                   <div style={styles.nutritionValue}>
-                      {displayNutrition.total_carbs}ج
+                      {patientNutritionData?.targetCarbs || displayNutrition.total_carbs}ج
                   </div>
                   <div style={styles.nutritionLabel}>كربوهيدرات</div>
                 </div>
                 
                 <div style={styles.nutritionCard}>
                   <div style={styles.nutritionValue}>
-                      {displayNutrition.total_fat}ج
+                      {patientNutritionData?.targetFat || displayNutrition.total_fat}ج
                   </div>
                   <div style={styles.nutritionLabel}>دهون</div>
                 </div>
                 
                 <div style={styles.nutritionCard}>
                   <div style={styles.nutritionValue}>
-                      {displayNutrition.total_fiber}ج
+                      {patientNutritionData?.targetFiber || displayNutrition.total_fiber}ج
                   </div>
                   <div style={styles.nutritionLabel}>ألياف</div>
                 </div>
@@ -2424,66 +2788,69 @@ const DailyMealPlanner = () => {
               <div style={styles.summary}>
                 <h4>📊 تحليل الخطة الغذائية:</h4>
                 <p>
-                    <strong>إجمالي السعرات:</strong> {displayNutrition.total_calories} من أصل {displayNutrition.target_calories} سعرة حرارية
+                    <strong>السعرات المستهدفة:</strong> {patientNutritionData?.targetCalories ? Math.round(patientNutritionData.targetCalories - 500) : Math.round(patientNutritionData?.tdee || displayNutrition.target_calories)} سعرة حرارية
                 </p>
                 <p>
-                    <strong>نسبة الهدف:</strong> {Math.round((displayNutrition.total_calories / displayNutrition.target_calories) * 100)}%
+                    <strong>السعرات الفعلية:</strong> {displayNutrition.actual_calories || displayNutrition.total_calories} سعرة حرارية
                 </p>
                 <p>
-                  <strong>التوزيع الغذائي:</strong> 
-                    البروتين {displayNutrition.total_calories > 0 ? Math.round((displayNutrition.total_protein * 4 / displayNutrition.total_calories) * 100) : 0}% | 
-                    الكربوهيدرات {displayNutrition.total_calories > 0 ? Math.round((displayNutrition.total_carbs * 4 / displayNutrition.total_calories) * 100) : 0}% | 
-                    الدهون {displayNutrition.total_calories > 0 ? Math.round((displayNutrition.total_fat * 9 / displayNutrition.total_calories) * 100) : 0}%
+                    <strong>نسبة الهدف:</strong> {Math.round(((displayNutrition.actual_calories || displayNutrition.total_calories) / (patientNutritionData?.targetCalories ? Math.round(patientNutritionData.targetCalories - 500) : (patientNutritionData?.tdee || displayNutrition.target_calories))) * 100)}%
+                </p>
+                <p>
+                  <strong>التوزيع الغذائي المستهدف:</strong> 
+                    البروتين {patientNutritionData?.targetCalories ? Math.round((patientNutritionData.targetProtein * 4 / patientNutritionData.targetCalories) * 100) : 0}% | 
+                    الكربوهيدرات {patientNutritionData?.targetCalories ? Math.round((patientNutritionData.targetCarbs * 4 / patientNutritionData.targetCalories) * 100) : 0}% | 
+                    الدهون {patientNutritionData?.targetCalories ? Math.round((patientNutritionData.targetFat * 9 / patientNutritionData.targetCalories) * 100) : 0}%
                 </p>
               </div>
               
-                {/* تفاصيل إضافية للقيم الغذائية */}
-                <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-                  <h5>🔍 تفاصيل القيم الغذائية:</h5>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginTop: '10px' }}>
-                    <div style={styles.nutritionDetail}>
-                      <strong>السعرات الحرارية:</strong> {displayNutrition.total_calories} سعرة
-                      <div style={styles.progressContainer}>
-                        <div style={{
-                          ...styles.progressBar,
-                          width: getProgressBarWidth(displayNutrition.total_calories, displayNutrition.target_calories),
-                          backgroundColor: getProgressBarColor(displayNutrition.total_calories, displayNutrition.target_calories).backgroundColor
-                        }}>
-                          {getProgressBarWidth(displayNutrition.total_calories, displayNutrition.target_calories)}
-                        </div>
+              {/* تفاصيل إضافية للقيم الغذائية */}
+              <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                <h5>🔍 تفاصيل القيم الغذائية:</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginTop: '10px' }}>
+                  <div style={styles.nutritionDetail}>
+                      <strong>السعرات الحرارية:</strong> {patientNutritionData?.targetCalories ? Math.round(patientNutritionData.targetCalories - 500) : displayNutrition.total_calories} سعرة
+                    <div style={styles.progressContainer}>
+                      <div style={{
+                        ...styles.progressBar,
+                          width: getProgressBarWidth(patientNutritionData?.targetCalories ? Math.round(patientNutritionData.targetCalories - 500) : displayNutrition.total_calories, displayNutrition.target_calories),
+                          backgroundColor: getProgressBarColor(patientNutritionData?.targetCalories ? Math.round(patientNutritionData.targetCalories - 500) : displayNutrition.total_calories, displayNutrition.target_calories).backgroundColor
+                      }}>
+                          {getProgressBarWidth(patientNutritionData?.targetCalories ? Math.round(patientNutritionData.targetCalories - 500) : displayNutrition.total_calories, displayNutrition.target_calories)}
                       </div>
                     </div>
-                    
-                    <div style={styles.nutritionDetail}>
+                  </div>
+                  
+                  <div style={styles.nutritionDetail}>
                       <strong>البروتين:</strong> {displayNutrition.total_protein} جرام
-                      <div style={{ fontSize: '0.9em', color: '#666' }}>
-                        ({displayNutrition.total_calories > 0 ? ((displayNutrition.total_protein * 4) / displayNutrition.total_calories * 100).toFixed(1) : 0}% من السعرات)
-                      </div>
+                    <div style={{ fontSize: '0.9em', color: '#666' }}>
+                        ({patientNutritionData?.targetCalories ? ((displayNutrition.total_protein * 4) / Math.round(patientNutritionData.targetCalories - 500) * 100).toFixed(1) : (displayNutrition.total_calories > 0 ? ((displayNutrition.total_protein * 4) / displayNutrition.total_calories * 100).toFixed(1) : 0)}% من السعرات)
                     </div>
-                    
-                    <div style={styles.nutritionDetail}>
+                  </div>
+                  
+                  <div style={styles.nutritionDetail}>
                       <strong>الكربوهيدرات:</strong> {displayNutrition.total_carbs} جرام
-                      <div style={{ fontSize: '0.9em', color: '#666' }}>
-                        ({displayNutrition.total_calories > 0 ? ((displayNutrition.total_carbs * 4) / displayNutrition.total_calories * 100).toFixed(1) : 0}% من السعرات)
-                      </div>
+                    <div style={{ fontSize: '0.9em', color: '#666' }}>
+                        ({patientNutritionData?.targetCalories ? ((displayNutrition.total_carbs * 4) / Math.round(patientNutritionData.targetCalories - 500) * 100).toFixed(1) : (displayNutrition.total_calories > 0 ? ((displayNutrition.total_carbs * 4) / displayNutrition.total_calories * 100).toFixed(1) : 0)}% من السعرات)
                     </div>
-                    
-                    <div style={styles.nutritionDetail}>
+                  </div>
+                  
+                  <div style={styles.nutritionDetail}>
                       <strong>الدهون:</strong> {displayNutrition.total_fat} جرام
-                      <div style={{ fontSize: '0.9em', color: '#666' }}>
-                        ({displayNutrition.total_calories > 0 ? ((displayNutrition.total_fat * 9) / displayNutrition.total_calories * 100).toFixed(1) : 0}% من السعرات)
-                      </div>
+                    <div style={{ fontSize: '0.9em', color: '#666' }}>
+                        ({patientNutritionData?.targetCalories ? ((displayNutrition.total_fat * 9) / Math.round(patientNutritionData.targetCalories - 500) * 100).toFixed(1) : (displayNutrition.total_calories > 0 ? ((displayNutrition.total_fat * 9) / displayNutrition.total_calories * 100).toFixed(1) : 0)}% من السعرات)
                     </div>
-                    
-                    <div style={styles.nutritionDetail}>
+                  </div>
+                  
+                  <div style={styles.nutritionDetail}>
                       <strong>الألياف:</strong> {displayNutrition.total_fiber} جرام
-                      <div style={{ fontSize: '0.9em', color: '#666' }}>
-                        (ممتاز للهضم)
-                      </div>
+                    <div style={{ fontSize: '0.9em', color: '#666' }}>
+                      (ممتاز للهضم)
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
             );
           })()}
 

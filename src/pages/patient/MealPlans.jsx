@@ -34,129 +34,401 @@ const PatientMealPlans = () => {
   const [selectedMeals, setSelectedMeals] = useState([])
   const [showMealSelection, setShowMealSelection] = useState(false)
 
+  // جلب ملف المريض للحصول على السعرات المطلوبة
+  const { data: patientProfile } = useQuery(
+    'patient-profile',
+    () => api.get(`/api/accounts/patients/${user.id}/profile/`).then(res => res.data),
+    { enabled: !!user?.id }
+  )
+
   // جلب خطط الوجبات للمريض
-  const { data: mealPlans, isLoading, error } = useQuery(
+  const { data: mealPlans, isLoading, error, refetch } = useQuery(
     'patient-meal-plans',
     () => api.get(`/api/meals/patients/${user.id}/meal-plans/`).then(res => {
-      console.log('API response:', res.data)
-      // API يعيد {count, next, previous, results: []}
-      // نحتاج إلى استخراج results من الاستجابة
+      console.log('🔄 API response:', res.data)
       if (res.data && res.data.results && Array.isArray(res.data.results)) {
-        console.log('Found meal plans:', res.data.results.length)
+        console.log('✅ Found meal plans:', res.data.results.length)
+        res.data.results.forEach((plan, index) => {
+          console.log(`📋 Plan ${index + 1}: ${plan.title} - Diet: ${plan.diet_plan} - Meals: ${plan.meals?.length || 0}`)
+          if (plan.meals && plan.meals.length > 0) {
+            console.log(`🔍 Debug - Plan ${index + 1} meals breakdown:`)
+            plan.meals.forEach((meal, mealIndex) => {
+              console.log(`  🍽️ Meal ${mealIndex + 1}: ${meal.name} - Day: ${meal.day_of_week} - Total Nutrition:`, meal.total_nutrition)
+            })
+          }
+        })
         return res.data.results
       }
-      console.log('No meal plans found or invalid response format')
+      console.log('❌ No meal plans found or invalid response format')
       return []
     }),
     { 
       enabled: !!user?.id,
-      refetchInterval: 30000, // تحديث كل 30 ثانية
-      initialData: [], // بيانات أولية فارغة
+      refetchInterval: 10000,
+      initialData: [],
+      staleTime: 0,
+      cacheTime: 0,
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+      retry: 3
     }
   )
 
   // وظائف إدارة اختيار الوجبات
+  const isMealSelected = (meal, mealType) => {
+    return selectedMeals.some(item => 
+      item.meal.id === meal.id && item.mealType === mealType
+    )
+  }
+
   const handleMealSelection = (meal, mealType) => {
-    console.log('handleMealSelection called with:', { meal: meal.name, mealType, selectedMeals })
-    const mealKey = `${mealType}-${meal.name}`
-    const isSelected = selectedMeals.some(selected => selected.key === mealKey)
+    console.log('🍽️ Selecting meal:', meal.name, 'Type:', mealType)
+    console.log('🔍 Meal nutrition data:', {
+      mealName: meal.name,
+      nutrition_info: meal.nutrition_info,
+      total_nutrition: meal.total_nutrition,
+      calories: meal.calories,
+      protein: meal.protein,
+      carbs: meal.carbs,
+      fat: meal.fat
+    })
     
-    console.log('Current selection state:', { mealKey, isSelected, selectedMeals })
+    const existingIndex = selectedMeals.findIndex(item => 
+      item.meal.id === meal.id && item.mealType === mealType
+    )
     
-    if (isSelected) {
-      // إزالة الوجبة من الاختيارات
-      setSelectedMeals(prev => {
-        const newSelections = prev.filter(selected => selected.key !== mealKey)
-        console.log('Removing meal, new selections:', newSelections)
-        return newSelections
-      })
-      toast.info(`تم إلغاء اختيار: ${meal.name}`)
+    if (existingIndex >= 0) {
+      // إزالة الوجبة من المختارة
+      const newSelectedMeals = selectedMeals.filter((_, index) => index !== existingIndex)
+      setSelectedMeals(newSelectedMeals)
+      toast.info(`تم إلغاء اختيار ${meal.name}`)
     } else {
-      // إضافة الوجبة للاختيارات
-      setSelectedMeals(prev => {
-        const newSelections = [...prev, {
-          key: mealKey,
+      // إضافة الوجبة للمختارة
+      const newSelection = {
           meal: meal,
           mealType: mealType,
           selectedAt: new Date().toISOString()
-        }]
-        console.log('Adding meal, new selections:', newSelections)
-        return newSelections
-      })
-      toast.success(`تم اختيار: ${meal.name}`)
     }
+      setSelectedMeals([...selectedMeals, newSelection])
+      toast.success(`تم اختيار ${meal.name}`)
+  }
   }
 
-  const isMealSelected = (meal, mealType) => {
-    const mealKey = `${mealType}-${meal.name}`
-    return selectedMeals.some(selected => selected.key === mealKey)
+  // حساب السعرات الحرارية للوجبة من المكونات مباشرة
+  const calculateMealCaloriesFromIngredients = (meal) => {
+    if (!meal.ingredients || meal.ingredients.length === 0) {
+      // إذا لم تكن هناك مكونات، استخدم القيم المحفوظة
+      return meal.nutrition_info?.calories || 
+             meal.total_nutrition?.calories || 
+             meal.calories || 0
+    }
+    
+    // حساب السعرات من المكونات مباشرة
+    return meal.ingredients.reduce((total, ingredient) => {
+      // محاولة الحصول على السعرات من المكون
+      let ingredientCalories = ingredient.calories || 0
+      
+      // إذا لم تكن موجودة، احسبها من calories_per_100g و amount
+      if (ingredientCalories === 0) {
+        const caloriesPer100g = ingredient.calories_per_100g || 
+                                ingredient.food?.calories_per_100g || 0
+        const amount = ingredient.amount || ingredient.quantity || 0
+        if (caloriesPer100g > 0 && amount > 0) {
+          ingredientCalories = (caloriesPer100g * amount) / 100
+        }
+      }
+      
+      return total + ingredientCalories
+    }, 0)
+  }
+
+  // حساب مجموع السعرات الحرارية للوجبات المختارة
+  const calculateTotalCalories = () => {
+    return selectedMeals.reduce((total, item) => {
+      // حساب السعرات من المكونات مباشرة
+      const mealCalories = calculateMealCaloriesFromIngredients(item.meal)
+      return total + mealCalories
+    }, 0)
+  }
+
+  // حساب TDEE من بيانات المريض (نفس الحساب في صفحة الطبيب)
+  const calculateTDEE = () => {
+    if (!patientProfile) {
+      console.log('⚠️ calculateTDEE: patientProfile is null')
+      return null
+    }
+    
+    const weight = patientProfile.current_weight
+    const height = patientProfile.height
+    const gender = patientProfile.gender
+    const activityLevel = patientProfile.activity_level
+    
+    console.log('📊 calculateTDEE - Input data:', {
+      weight,
+      height,
+      gender,
+      activityLevel,
+      dateOfBirth: patientProfile.user?.date_of_birth
+    })
+    
+    if (!weight || !height || !gender || !activityLevel) {
+      console.log('⚠️ calculateTDEE: Missing required data', { weight, height, gender, activityLevel })
+      return null
+    }
+    
+    // حساب العمر (نفس الطريقة في صفحة الطبيب)
+    const dateOfBirth = patientProfile.user?.date_of_birth
+    let age = 30 // افتراضي
+    if (dateOfBirth) {
+      const birthDate = new Date(dateOfBirth)
+      const today = new Date()
+      age = today.getFullYear() - birthDate.getFullYear()
+      const monthDiff = today.getMonth() - birthDate.getMonth()
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--
+      }
+    }
+    
+    // حساب BMR باستخدام معادلة Mifflin-St Jeor (نفس المعادلة في صفحة الطبيب)
+    let bmr
+    if (gender === 'male') {
+      bmr = (10 * weight) + (6.25 * height) - (5 * age) + 5
+    } else {
+      bmr = (10 * weight) + (6.25 * height) - (5 * age) - 161
+    }
+    
+    // معاملات النشاط البدني (نفس المعاملات في صفحة الطبيب)
+    const activityMultipliers = {
+      'sedentary': 1.2,
+      'light': 1.375,
+      'moderate': 1.55,
+      'active': 1.725,
+      'very_active': 1.9
+    }
+    
+    const multiplier = activityMultipliers[activityLevel] || 1.55
+    const tdee = Math.round(bmr * multiplier)
+    
+    console.log('📊 calculateTDEE - Calculation:', {
+      age,
+      bmr,
+      multiplier,
+      tdee,
+      formula: gender === 'male' 
+        ? `(10 * ${weight}) + (6.25 * ${height}) - (5 * ${age}) + 5 = ${bmr}`
+        : `(10 * ${weight}) + (6.25 * ${height}) - (5 * ${age}) - 161 = ${bmr}`,
+      tdeeFormula: `${bmr} * ${multiplier} = ${tdee}`
+    })
+    
+    return tdee
+  }
+
+  // حساب السعرات اليومية للمريض (TDEE + goal adjustment)
+  // هذا هو نفس الحساب في صفحة الطبيب: السعرات اليومية المحسوبة
+  const calculateDailyCalories = () => {
+    const tdee = calculateTDEE()
+    if (!tdee || tdee <= 0) return null
+    
+    const goal = patientProfile?.goal
+    if (!goal) return tdee
+    
+    // تطبيق تعديل الهدف (نفس الحساب في الـ backend)
+    const goalAdjustments = {
+      'lose_weight': -500,
+      'gain_weight': 500,
+      'build_muscle': 300,
+      'maintain_weight': 0,
+      'improve_health': 0
+    }
+    
+    const adjustment = goalAdjustments[goal] || 0
+    const dailyCalories = tdee + adjustment
+    
+    // الحد الأدنى: 1200 سعرة حرارية
+    const finalCalories = Math.max(dailyCalories, 1200)
+    
+    console.log('📊 calculateDailyCalories:', {
+      tdee,
+      goal,
+      adjustment,
+      dailyCalories,
+      finalCalories
+    })
+    
+    return finalCalories
+  }
+
+  // الحصول على السعرات المطلوبة (السعرات اليومية المحسوبة = TDEE + goal adjustment)
+  // هذا هو نفس الحساب في صفحة الطبيب: السعرات اليومية المحسوبة
+  const getRequiredCalories = () => {
+    // أولاً: حساب السعرات اليومية من البيانات الحالية (TDEE + goal adjustment)
+    const calculatedDailyCalories = calculateDailyCalories()
+    if (calculatedDailyCalories && calculatedDailyCalories > 0) {
+      console.log('📊 Using calculated daily calories (TDEE + goal adjustment):', calculatedDailyCalories)
+      
+      // التحقق من أن daily_calories المحفوظة تطابق السعرات المحسوبة
+      if (patientProfile?.daily_calories && patientProfile.daily_calories !== calculatedDailyCalories) {
+        console.log(`⚠️ daily_calories (${patientProfile.daily_calories}) doesn't match calculated (${calculatedDailyCalories}). Using calculated.`)
+      }
+      
+      return calculatedDailyCalories
+    }
+    
+    // Fallback: استخدام daily_calories المحفوظة إذا لم يكن الحساب متاحاً
+    if (patientProfile?.daily_calories && patientProfile.daily_calories > 0) {
+      console.log('📊 Using daily_calories from profile (calculation failed):', patientProfile.daily_calories)
+      return patientProfile.daily_calories
+    }
+    
+    // Fallback: استخدام السعرات من خطة الوجبات
+    if (selectedPlan?.target_calories) {
+      console.log('📊 Using target_calories from plan:', selectedPlan.target_calories)
+      return selectedPlan.target_calories
+    }
+    
+    console.log('⚠️ No required calories found')
+    return null
   }
 
   const saveSelectedMeals = async () => {
-    try {
       if (selectedMeals.length === 0) {
         toast.warning('يرجى اختيار وجبة واحدة على الأقل')
         return
       }
 
-      // التحقق من البيانات المطلوبة
-      if (!user || !user.id) {
-        console.error('User not found or user.id is missing')
-        toast.error('خطأ: بيانات المستخدم غير متوفرة')
-        return
-      }
+      // لا يوجد تحقق من السعرات - الـ backend سيقوم بتعديل المكونات تلقائياً لتطابق السعرات المطلوبة
+      // يمكن للمريض حفظ الوجبات بأي سعرات، وسيتم التعديل التلقائي في الـ backend
 
-      if (!selectedPlan || !selectedPlan.id) {
-        console.error('Selected plan not found or plan.id is missing')
-        toast.error('خطأ: خطة الوجبات غير محددة')
-        return
-      }
-
-      console.log('Saving meal selections:', {
-        patientId: user.id,
-        mealPlanId: selectedPlan.id,
-        selectedMeals: selectedMeals,
-        user: user,
-        selectedPlan: selectedPlan
-      })
-
-      // إرسال الوجبات المختارة للخادم
-      const response = await api.post(`/api/meals/patients/${user.id}/selected-meals/`, {
-        meal_plan_id: selectedPlan.id,
-        selected_meals: selectedMeals.map(item => ({
+    try {
+      const nutrition_info = selectedMeals.map(item => {
+        console.log('🔍 Patient - Sending meal data:', {
+          mealName: item.meal.name,
+          ingredients: item.meal.ingredients,
+          ingredientsLength: item.meal.ingredients?.length || 0,
+          mealData: item.meal
+        })
+        
+        // إذا كانت المكونات فارغة، نحاول الحصول عليها من مصدر آخر
+        let ingredients = item.meal.ingredients || []
+        if (!ingredients || ingredients.length === 0) {
+          console.log('⚠️ Patient - No ingredients found, trying alternative sources')
+          // محاولة الحصول على المكونات من مصادر أخرى
+          if (item.meal.meal_ingredients) {
+            ingredients = item.meal.meal_ingredients
+          } else if (item.meal.ingredients_list) {
+            ingredients = item.meal.ingredients_list
+          }
+        }
+        
+        // التأكد من أن كل مكون يحتوي على البيانات الغذائية المطلوبة
+        const enrichedIngredients = ingredients.map(ing => {
+          // إذا كان المكون يحتوي على food object، استخرج البيانات منه
+          if (ing.food && typeof ing.food === 'object') {
+            return {
+              ...ing,
+              food_id: ing.food.id || ing.food_id || ing.id,
+              food_name: ing.food.name || ing.food_name || ing.name,
+              food_name_ar: ing.food.name_ar || ing.food_name_ar,
+              amount: ing.amount || ing.quantity || 0,
+              calories_per_100g: ing.calories_per_100g || ing.food.calories_per_100g || 0,
+              protein_per_100g: ing.protein_per_100g || ing.food.protein_per_100g || 0,
+              carbs_per_100g: ing.carbs_per_100g || ing.food.carbs_per_100g || 0,
+              fat_per_100g: ing.fat_per_100g || ing.food.fat_per_100g || 0,
+              calories: ing.calories || (ing.calories_per_100g && ing.amount ? (ing.calories_per_100g * ing.amount / 100) : 0),
+              protein: ing.protein || (ing.protein_per_100g && ing.amount ? (ing.protein_per_100g * ing.amount / 100) : 0),
+              carbs: ing.carbs || (ing.carbs_per_100g && ing.amount ? (ing.carbs_per_100g * ing.amount / 100) : 0),
+              fat: ing.fat || (ing.fat_per_100g && ing.amount ? (ing.fat_per_100g * ing.amount / 100) : 0)
+            }
+          }
+          // إذا كان المكون يحتوي على البيانات مباشرة
+          return {
+            ...ing,
+            food_id: ing.food_id || ing.food?.id || ing.id,
+            food_name: ing.food_name || ing.food?.name || ing.name,
+            food_name_ar: ing.food_name_ar || ing.food?.name_ar,
+            amount: ing.amount || ing.quantity || 0,
+            calories_per_100g: ing.calories_per_100g || 0,
+            protein_per_100g: ing.protein_per_100g || 0,
+            carbs_per_100g: ing.carbs_per_100g || 0,
+            fat_per_100g: ing.fat_per_100g || 0,
+            calories: ing.calories || 0,
+            protein: ing.protein || 0,
+            carbs: ing.carbs || 0,
+            fat: ing.fat || 0
+          }
+        })
+        
+        console.log('🔍 Patient - Final ingredients to send:', enrichedIngredients)
+        
+        // حساب السعرات الحرارية من المكونات مباشرة
+        const calculatedCalories = calculateMealCaloriesFromIngredients(item.meal)
+        const calculatedProtein = enrichedIngredients.reduce((sum, ing) => sum + (ing.protein || 0), 0)
+        const calculatedCarbs = enrichedIngredients.reduce((sum, ing) => sum + (ing.carbs || 0), 0)
+        const calculatedFat = enrichedIngredients.reduce((sum, ing) => sum + (ing.fat || 0), 0)
+        
+        return {
+          meal_id: item.meal.id,
           meal_name: item.meal.name,
           meal_type: item.mealType,
-          selected_at: item.selectedAt,
           nutrition_info: {
-            calories: item.meal.calories,
-            protein: item.meal.protein,
-            carbs: item.meal.carbs,
-            fat: item.meal.fat
+            calories: calculatedCalories,
+            protein: calculatedProtein,
+            carbs: calculatedCarbs,
+            fat: calculatedFat
           },
-          ingredients: item.meal.ingredients || [],
+          ingredients: enrichedIngredients,
           notes: item.meal.description || ''
-        }))
+        }
       })
 
-      console.log('Meal selections saved successfully:', response.data)
-      toast.success('تم حفظ اختياراتك بنجاح')
-      setShowMealSelection(false)
+      const response = await api.post(`/api/meals/patients/${user.id}/selected-meals/`, {
+        meal_plan_id: selectedPlan.id,
+        selected_meals: nutrition_info
+      })
+
+      if (response.data) {
+        // Check if ingredients were adjusted
+        if (response.data.adjustment_info && response.data.adjustment_info.adjusted) {
+          const { original_calories, adjusted_calories, required_calories } = response.data.adjustment_info
+          toast.success(
+            `تم حفظ اختياراتك بنجاح! تم تعديل المكونات تلقائياً من ${original_calories} إلى ${adjusted_calories} سعرة لتطابق المطلوب (${required_calories} سعرة)`,
+            { autoClose: 5000 }
+          )
+        } else {
+          toast.success('تم حفظ اختياراتك بنجاح!')
+        }
+        setShowMealSelection(false)
+        setSelectedMeals([])
         queryClient.invalidateQueries('patient-meal-plans')
-      // Also invalidate doctor's view
-      queryClient.invalidateQueries('patient-meal-selections')
+      }
       } catch (error) {
-      console.error('Error saving meal selections:', error)
-      console.error('Error details:', error.response?.data)
-      toast.error('فشل في حفظ الاختيارات: ' + (error.response?.data?.error || error.message))
+      console.error('Error saving selected meals:', error)
+      const errorMessage = error.response?.data?.error || error.message || 'حدث خطأ في حفظ اختياراتك'
+      toast.error(errorMessage)
+      
+      // إذا كان الخطأ متعلق بالسعرات الحرارية، عرض تفاصيل إضافية
+      if (error.response?.data?.required_calories) {
+        const { required_calories, total_calories, difference } = error.response.data
+        console.log('Calories validation error:', { required_calories, total_calories, difference })
+      }
     }
   }
 
   const getMealTypeText = (mealType) => {
     const types = {
       'breakfast': 'الإفطار',
-      'lunch': 'الغداء', 
+      'Breakfast': 'الإفطار',
+      'lunch': 'الغداء',
+      'Lunch': 'الغداء',
       'dinner': 'العشاء',
-      'snack': 'وجبة خفيفة'
+      'Dinner': 'العشاء',
+      'snack': 'وجبة خفيفة',
+      'Snack': 'وجبة خفيفة',
+      'Morning Snack': 'وجبة خفيفة صباحية',
+      'Afternoon Snack': 'وجبة خفيفة بعد الظهر',
+      'Evening Snack': 'وجبة خفيفة مسائية',
+      'Pre-Workout': 'قبل التمرين',
+      'Post-Workout': 'بعد التمرين'
     }
     return types[mealType] || mealType
   }
@@ -184,327 +456,55 @@ const PatientMealPlans = () => {
     return dietPlans[dietPlan] || dietPlan
   }
 
-  const getSampleMealsForDietPlan = (dietPlan) => {
-    const meals = {
-      'keto': {
-        'breakfast': [
-          {
-            name: 'فطور الكيتو الكلاسيكي',
-            description: 'فطور غني بالدهون ومنخفض الكربوهيدرات',
-            calories: 450,
-            protein: 25,
-            carbs: 8,
-            fat: 35,
-            ingredients: ['بيض مقلي بالزبدة', 'أفوكادو', 'جبن شيدر', 'لحم بقري']
-          },
-          {
-            name: 'فطور الكيتو السريع',
-            description: 'فطور سريع ومشبع',
-            calories: 380,
-            protein: 20,
-            carbs: 6,
-            fat: 30,
-            ingredients: ['جبن كريمي', 'لحم بقري', 'زيتون', 'قهوة بالزبدة']
-          }
-        ],
-        'lunch': [
-          {
-            name: 'سلطة الكيتو',
-            description: 'سلطة غنية بالدهون الصحية',
-            calories: 520,
-            protein: 30,
-            carbs: 12,
-            fat: 40,
-            ingredients: [
-              { name: 'خضار ورقية', amount: 100, nutrition: { calories: 20, protein: 2 } },
-              { name: 'أفوكادو', amount: 80, nutrition: { calories: 160, protein: 2 } },
-              { name: 'جبن فيتا', amount: 50, nutrition: { calories: 150, protein: 8 } },
-              { name: 'زيت الزيتون', amount: 15, nutrition: { calories: 135, protein: 0 } }
-            ]
-          }
-        ],
-        'dinner': [
-          {
-             name: 'سمك مع الخضار',
-             description: 'سمك مشوي مع خضار منخفضة الكربوهيدرات',
-            calories: 480,
-             protein: 35,
-            carbs: 8,
-            fat: 32,
-             ingredients: [
-               { name: 'سمك السلمون', amount: 150, nutrition: { calories: 300, protein: 25 } },
-               { name: 'بروكلي', amount: 100, nutrition: { calories: 35, protein: 3 } },
-               { name: 'زيت جوز الهند', amount: 10, nutrition: { calories: 90, protein: 0 } },
-               { name: 'ليمون', amount: 20, nutrition: { calories: 5, protein: 0 } }
-             ]
-           }
-         ],
-         'snack': [
-           {
-             name: 'وجبة خفيفة كيتو',
-             description: 'وجبة خفيفة غنية بالدهون الصحية',
-             calories: 200,
-             protein: 8,
-             carbs: 4,
-             fat: 18,
-             ingredients: [
-               { name: 'جبن كريمي', amount: 60, nutrition: { calories: 120, protein: 2 } },
-               { name: 'لوز', amount: 20, nutrition: { calories: 120, protein: 4 } },
-               { name: 'زيتون', amount: 30, nutrition: { calories: 40, protein: 0 } },
-               { name: 'أفوكادو', amount: 50, nutrition: { calories: 100, protein: 1 } }
-             ]
-           },
-           {
-             name: 'وجبة خفيفة سريعة',
-             description: 'وجبة خفيفة سريعة ومناسبة',
-             calories: 150,
-             protein: 6,
-             carbs: 3,
-             fat: 14,
-             ingredients: [
-               { name: 'جبن شيدر', amount: 40, nutrition: { calories: 160, protein: 10 } },
-               { name: 'زيتون أسود', amount: 20, nutrition: { calories: 30, protein: 0 } },
-               { name: 'بذور الشيا', amount: 10, nutrition: { calories: 50, protein: 2 } }
-             ]
-          }
-        ]
-      },
-      'balanced': {
-        'breakfast': [
-          {
-            name: 'فطور متوازن',
-            description: 'فطور صحي ومتوازن',
-            calories: 400,
-            protein: 20,
-            carbs: 45,
-            fat: 15,
-            ingredients: [
-              { name: 'شوفان', amount: 50, nutrition: { calories: 200, protein: 7 } },
-              { name: 'حليب', amount: 200, nutrition: { calories: 100, protein: 8 } },
-              { name: 'فواكه', amount: 100, nutrition: { calories: 60, protein: 1 } },
-              { name: 'عسل', amount: 20, nutrition: { calories: 60, protein: 0 } }
-            ]
-          }
-        ],
-        'lunch': [
-          {
-            name: 'دجاج مع الأرز',
-            description: 'دجاج مشوي مع أرز بني',
-            calories: 450,
-            protein: 30,
-            carbs: 50,
-            fat: 12,
-            ingredients: [
-              { name: 'دجاج', amount: 150, nutrition: { calories: 250, protein: 30 } },
-              { name: 'أرز بني', amount: 100, nutrition: { calories: 110, protein: 2 } },
-              { name: 'خضار', amount: 80, nutrition: { calories: 30, protein: 2 } },
-              { name: 'زيت الزيتون', amount: 10, nutrition: { calories: 90, protein: 0 } }
-            ]
-          }
-        ],
-        'dinner': [
-          {
-             name: 'سمك مع الخضار المشكلة',
-             description: 'وجبة خفيفة ومتوازنة',
-             calories: 420,
-            protein: 25,
-            carbs: 35,
-             fat: 18,
-             ingredients: [
-               { name: 'سمك مشوي', amount: 120, nutrition: { calories: 200, protein: 25 } },
-               { name: 'خضار مشكلة', amount: 100, nutrition: { calories: 40, protein: 3 } },
-               { name: 'زيت الزيتون', amount: 15, nutrition: { calories: 135, protein: 0 } },
-               { name: 'ليمون', amount: 20, nutrition: { calories: 5, protein: 0 } }
-             ]
-           }
-         ],
-         'snack': [
-           {
-             name: 'وجبة خفيفة متوازنة',
-             description: 'وجبة خفيفة صحية ومتوازنة',
-             calories: 180,
-             protein: 8,
-             carbs: 25,
-             fat: 6,
-             ingredients: [
-               { name: 'موز', amount: 80, nutrition: { calories: 80, protein: 1 } },
-               { name: 'لوز', amount: 15, nutrition: { calories: 90, protein: 3 } },
-               { name: 'عسل', amount: 10, nutrition: { calories: 30, protein: 0 } },
-               { name: 'زبادي', amount: 100, nutrition: { calories: 60, protein: 5 } }
-             ]
-           },
-           {
-             name: 'وجبة خفيفة فواكه',
-             description: 'وجبة خفيفة من الفواكه الطازجة',
-             calories: 120,
-             protein: 3,
-             carbs: 28,
-             fat: 2,
-             ingredients: [
-               { name: 'تفاح', amount: 100, nutrition: { calories: 50, protein: 0 } },
-               { name: 'برتقال', amount: 80, nutrition: { calories: 40, protein: 1 } },
-               { name: 'جوز', amount: 10, nutrition: { calories: 65, protein: 1 } },
-               { name: 'عسل', amount: 5, nutrition: { calories: 15, protein: 0 } }
-             ]
-           }
-         ]
-       },
-       'weight_loss': {
-        'breakfast': [
-          {
-             name: 'فطور خسارة الوزن',
-             description: 'فطور منخفض السعرات وعالي البروتين',
-            calories: 300,
-             protein: 25,
-            carbs: 20,
-             fat: 12,
-             ingredients: [
-               { name: 'بيض مسلوق', amount: 100, nutrition: { calories: 155, protein: 13 } },
-               { name: 'خضار ورقية', amount: 50, nutrition: { calories: 10, protein: 1 } },
-               { name: 'جبن قليل الدسم', amount: 30, nutrition: { calories: 60, protein: 8 } },
-               { name: 'طماطم', amount: 60, nutrition: { calories: 10, protein: 0 } }
-             ]
-          }
-        ],
-        'lunch': [
-          {
-             name: 'سلطة خسارة الوزن',
-             description: 'سلطة غنية بالبروتين ومنخفضة السعرات',
-             calories: 250,
-             protein: 20,
-            carbs: 15,
-             fat: 8,
-             ingredients: [
-               { name: 'دجاج مشوي', amount: 100, nutrition: { calories: 165, protein: 31 } },
-               { name: 'خضار ورقية', amount: 80, nutrition: { calories: 15, protein: 2 } },
-               { name: 'طماطم', amount: 60, nutrition: { calories: 10, protein: 0 } },
-               { name: 'خيار', amount: 50, nutrition: { calories: 8, protein: 0 } }
-             ]
-          }
-        ],
-        'dinner': [
-          {
-             name: 'سمك مع الخضار للرجيم',
-             description: 'وجبة عشاء خفيفة ومناسبة للرجيم',
-             calories: 280,
-            protein: 30,
-            carbs: 12,
-             fat: 10,
-             ingredients: [
-               { name: 'سمك أبيض', amount: 120, nutrition: { calories: 120, protein: 25 } },
-               { name: 'بروكلي', amount: 80, nutrition: { calories: 30, protein: 3 } },
-               { name: 'جزر', amount: 60, nutrition: { calories: 25, protein: 1 } },
-               { name: 'ليمون', amount: 15, nutrition: { calories: 4, protein: 0 } }
-             ]
-           }
-         ],
-         'snack': [
-           {
-             name: 'وجبة خفيفة للرجيم',
-             description: 'وجبة خفيفة منخفضة السعرات',
-             calories: 100,
-             protein: 8,
-             carbs: 12,
-             fat: 2,
-             ingredients: [
-               { name: 'زبادي قليل الدسم', amount: 150, nutrition: { calories: 80, protein: 8 } },
-               { name: 'توت', amount: 50, nutrition: { calories: 25, protein: 0 } },
-               { name: 'بذور الشيا', amount: 5, nutrition: { calories: 25, protein: 1 } }
-             ]
-           },
-           {
-             name: 'وجبة خفيفة خضار',
-             description: 'وجبة خفيفة من الخضار الطازجة',
-             calories: 80,
-             protein: 4,
-             carbs: 15,
-             fat: 1,
-             ingredients: [
-               { name: 'خيار', amount: 80, nutrition: { calories: 12, protein: 1 } },
-               { name: 'جزر', amount: 60, nutrition: { calories: 25, protein: 1 } },
-               { name: 'طماطم', amount: 50, nutrition: { calories: 9, protein: 0 } },
-               { name: 'ليمون', amount: 10, nutrition: { calories: 3, protein: 0 } }
-             ]
-          }
-        ]
-      }
-    }
-    return meals[dietPlan] || meals['balanced']
-  }
-
+  // دالة للحصول على الخطط الحالية
   const getCurrentPlans = () => {
-    try {
-      console.log('getCurrentPlans called with mealPlans:', mealPlans)
-      
-      if (!mealPlans || !Array.isArray(mealPlans)) {
-        console.log('mealPlans is not an array:', mealPlans)
-        return []
-      }
-      
-      if (mealPlans.length === 0) {
-        console.log('No meal plans available')
-        return []
-      }
+    if (!mealPlans || !Array.isArray(mealPlans)) return []
       
     const today = new Date()
       today.setHours(0, 0, 0, 0)
     
-    const activePlans = mealPlans.filter(plan => {
-        console.log('Processing plan:', plan.id, plan.title, 'is_active:', plan.is_active)
-        
-        if (!plan || !plan.start_date || !plan.end_date) {
-          console.log('Invalid plan:', plan)
-          return false
-        }
-        
-        try {
+    return mealPlans.filter(plan => {
+      if (!plan.start_date || !plan.end_date) return false
+      
       const startDate = new Date(plan.start_date)
       const endDate = new Date(plan.end_date)
-      startDate.setHours(0, 0, 0, 0)
-          endDate.setHours(23, 59, 59, 999)
-          
-          // تعديل المنطق: اعتبار الخطة نشطة إذا كانت:
-          // 1. نشطة في النظام (is_active = true)
-          // 2. لم تنته بعد (end_date >= today)
-          // 3. تبدأ اليوم أو قبل ذلك (start_date <= today + 1 day) - نعطي يوم واحد من المرونة
-          const tomorrow = new Date(today)
-          tomorrow.setDate(tomorrow.getDate() + 1)
-          
-          const isCurrent = plan.is_active && endDate >= today && startDate <= tomorrow
-          console.log(`Plan ${plan.id}: start=${startDate.toISOString()}, end=${endDate.toISOString()}, today=${today.toISOString()}, tomorrow=${tomorrow.toISOString()}, is_active=${plan.is_active}, isCurrent=${isCurrent}`)
-          return isCurrent
-        } catch (dateError) {
-          console.error('Error processing plan dates:', dateError, plan)
-          return false
-        }
-      })
       
-      console.log('Active plans found:', activePlans.length)
-      const sortedPlans = activePlans.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      const result = sortedPlans.length > 0 ? [sortedPlans[0]] : []
-      console.log('Returning current plans:', result.length)
-      return result
-    } catch (error) {
-      console.error('Error in getCurrentPlans:', error)
-      return []
-    }
+      return (startDate <= today && endDate >= today) || startDate > today
+    }).sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
   }
+
+  const currentPlans = getCurrentPlans()
 
   if (isLoading) {
-    return <LoadingSpinner />
-  }
-
-  if (error) {
-    console.error('Error loading meal plans:', error)
     return (
-      <div className="alert alert-danger">
-        <i className="fas fa-exclamation-triangle me-2"></i>
-        فشل في تحميل خطط الوجبات: {error.message || 'خطأ غير معروف'}
+      <div className="container-fluid py-4">
+        <div className="row justify-content-center">
+          <div className="col-12 text-center">
+            <LoadingSpinner />
+            <p className="mt-3">جاري تحميل خطط الوجبات...</p>
+          </div>
+        </div>
       </div>
     )
   }
 
-  const currentPlans = getCurrentPlans()
+  if (error) {
+    return (
+      <div className="container-fluid py-4">
+        <div className="row justify-content-center">
+          <div className="col-12 text-center">
+      <div className="alert alert-danger">
+              <h5>خطأ في تحميل البيانات</h5>
+              <p>{error.message}</p>
+              <button className="btn btn-primary" onClick={() => refetch()}>
+                إعادة المحاولة
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="container-fluid py-4">
@@ -516,219 +516,85 @@ const PatientMealPlans = () => {
                 خطط الوجبات
               </h2>
               <button
-              className="btn btn-outline-primary me-2"
-                onClick={() => {
-                queryClient.invalidateQueries('patient-meal-plans')
-                toast.info('جاري تحديث البيانات...')
-                }}
-              >
-              <i className="fas fa-sync me-2"></i>
-              تحديث
-              </button>
-              <button
-              className="btn btn-outline-success"
-              onClick={async () => {
-                try {
-                  // إنشاء اختيارات وهمية للاختبار
-                  const testSelections = [
-                    {
-                      meal: {
-                        name: 'فطور تجريبي',
-                        calories: 400,
-                        protein: 20,
-                        carbs: 45,
-                        fat: 15,
-                        description: 'وجبة تجريبية'
-                      },
-                      mealType: 'breakfast',
-                      selectedAt: new Date().toISOString(),
-                      key: 'test-breakfast'
-                    }
-                  ]
-                  
-                  if (user && user.id && selectedPlan && selectedPlan.id) {
-                    const response = await api.post(`/api/meals/patients/${user.id}/selected-meals/`, {
-                      meal_plan_id: selectedPlan.id,
-                      selected_meals: testSelections.map(item => ({
-                        meal_name: item.meal.name,
-                        meal_type: item.mealType,
-                        selected_at: item.selectedAt,
-                        nutrition_info: {
-                          calories: item.meal.calories,
-                          protein: item.meal.protein,
-                          carbs: item.meal.carbs,
-                          fat: item.meal.fat
-                        },
-                        notes: item.meal.description || ''
-                      }))
-                    })
-                    console.log('Test selections saved:', response.data)
-                    toast.success('تم حفظ الاختيارات التجريبية')
-                    queryClient.invalidateQueries('patient-meal-selections')
-                  } else {
-                    toast.error('بيانات المستخدم أو الخطة غير متوفرة')
-                  }
-                } catch (error) {
-                  console.error('Error saving test selections:', error)
-                  toast.error('فشل في حفظ الاختيارات التجريبية')
-                }
-              }}
+              className="btn btn-outline-primary"
+              onClick={() => refetch()}
             >
-              <i className="fas fa-flask me-2"></i>
-              اختبار الحفظ
+              <i className="fas fa-sync-alt me-2"></i>
+              تحديث البيانات
               </button>
       </div>
 
-          {/* معلومات التشخيص */}
-        <div className="row mb-3">
-          <div className="col-12">
-            <div className="alert alert-info">
-                <h6 className="mb-2">
-                  <i className="fas fa-info-circle me-2"></i>
-                  معلومات التشخيص
-                </h6>
-                <p className="mb-1">
-                  <strong>معرف المستخدم:</strong> {user ? user.id : 'غير محدد'}
-                </p>
-                <p className="mb-1">
-                  <strong>عدد خطط الوجبات:</strong> {mealPlans ? mealPlans.length : 'غير محدد'}
-                </p>
-                <p className="mb-1">
-                  <strong>الخطط النشطة:</strong> {currentPlans.length}
-                </p>
-                <p className="mb-1">
-                  <strong>الوجبات المختارة:</strong> {selectedMeals.length}
-                </p>
-                <p className="mb-1">
-                  <strong>الخطة المحددة:</strong> {selectedPlan ? `ID: ${selectedPlan.id}` : 'غير محددة'}
-                </p>
-                <p className="mb-0">
-                  <strong>حالة التحميل:</strong> {isLoading ? 'جاري التحميل...' : 'مكتمل'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {currentPlans.length === 0 ? (
-            <div className="text-center py-5">
-              <i className="fas fa-calendar-plus text-muted fs-1 mb-3"></i>
-              <h5 className="text-muted">لا توجد خطط وجبات نشطة</h5>
-              <p className="text-muted">
-                سيتم عرض خطط الوجبات التي ينشئها طبيبك هنا
-              </p>
-               {mealPlans && mealPlans.length > 0 && (
-                 <div className="alert alert-warning mt-3">
-                   <h6>خطط موجودة:</h6>
-                   {mealPlans.map((plan, index) => {
-                     const startDate = new Date(plan.start_date)
-                     const endDate = new Date(plan.end_date)
-                     const today = new Date()
-                     const isUpcoming = startDate > today
-                     const isActive = plan.is_active
-                     const isExpired = endDate < today
-                     
-                     return (
-                       <div key={index} className="mb-2 p-2 border rounded">
-                         <strong>{translatePlanTitle(plan.title)}</strong> - 
-                         من {startDate.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' })} إلى {endDate.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' })}
-              <br />
-                         <small className={`badge ${isActive ? 'bg-success' : 'bg-secondary'} me-1`}>
-                           نشط: {isActive ? 'نعم' : 'لا'}
-                         </small>
-                         <small className={`badge ${isUpcoming ? 'bg-info' : isExpired ? 'bg-danger' : 'bg-primary'} me-1`}>
-                           {isUpcoming ? 'قادمة' : isExpired ? 'منتهية' : 'جارية'}
-                         </small>
-                         {isUpcoming && (
-                           <small className="text-info">
-                             <i className="fas fa-clock me-1"></i>
-                             تبدأ خلال {Math.ceil((startDate - today) / (1000 * 60 * 60 * 24))} يوم
-                           </small>
-                         )}
-            </div>
-                     )
-                   })}
-        </div>
-      )}
-            </div>
-          ) : (
+          {currentPlans.length > 0 ? (
         <div className="row">
-              {currentPlans.map((plan) => (
-                <div key={plan.id} className="col-12 mb-4">
-                  <div className="card border-success">
-                  <div className="card-header bg-success text-white">
-                      <div className="d-flex justify-content-between align-items-center">
+              {currentPlans.map((plan, index) => (
+                <div key={index} className="col-md-6 col-lg-4 mb-4">
+                  <div className="card h-100 border-primary">
+                    <div className="card-header bg-primary text-white">
                         <h5 className="mb-0">
-                          <i className="fas fa-utensils me-2"></i>
-                          {translatePlanTitle(plan.title)}
+                        <i className="fas fa-calendar-alt me-2"></i>
+                        {translatePlanTitle(plan.title)}
                         </h5>
-                        <span className="badge bg-light text-success">
-                          {getDietPlanText(plan.diet_plan)}
-                        </span>
-                      </div>
                   </div>
                   <div className="card-body">
-                      <div className="row">
-                        <div className="col-md-6">
-                           <p className="text-muted mb-2">
-                             <i className="fas fa-calendar me-2"></i>
-                             من {new Date(plan.start_date).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' })} إلى {new Date(plan.end_date).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' })}
-                           </p>
-                          <p className="text-muted mb-2">
-                            <i className="fas fa-fire me-2"></i>
-                            السعرات المستهدفة: {plan.target_calories} سعرة حرارية
-                          </p>
+                      <p><strong>النظام الغذائي:</strong> {plan.diet_plan_display || getDietPlanText(plan.diet_plan)}</p>
+                      <p><strong>الفترة:</strong> من {new Date(plan.start_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })} إلى {new Date(plan.end_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })}</p>
+                      <p><strong>عدد الوجبات:</strong> {plan.meals?.length || 0}</p>
                       </div>
-                        <div className="col-md-6">
-                          <div className="d-flex gap-2">
+                    <div className="card-footer">
                     <button 
-                              className="btn btn-primary"
-                      onClick={() => setSelectedPlan(plan)}
-                    >
-                      <i className="fas fa-eye me-2"></i>
-                      عرض التفاصيل
+                        className="btn btn-primary w-100"
+                        onClick={() => {
+                          setSelectedPlan(plan)
+                          setShowMealSelection(true)
+                        }}
+                      >
+                        <i className="fas fa-utensils me-2"></i>
+                        عرض الوجبات
                     </button>
-                  </div>
-                </div>
-              </div>
         </div>
                   </div>
                     </div>
               ))}
              </div>
-          )}
+          ) : (
+            <div className="text-center py-5">
+              <div className="alert alert-info">
+                <h5>لا توجد خطط وجبات متاحة</h5>
+                <p>يرجى التواصل مع طبيبك لإنشاء خطة وجبات مناسبة لك.</p>
         </div>
                   </div>
+          )}
 
-      {/* Modal لعرض تفاصيل الخطة */}
-      {selectedPlan && (
+          {/* Modal لاختيار الوجبات */}
+          {showMealSelection && selectedPlan && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-xl">
             <div className="modal-content">
-              <div className="modal-header bg-success text-white">
+                  <div className="modal-header bg-primary text-white">
                 <h5 className="modal-title">
                   <i className="fas fa-utensils me-2"></i>
-                  {translatePlanTitle(selectedPlan.title)}
+                      {translatePlanTitle(selectedPlan.title)}
                 </h5>
                 <button
                   type="button"
                   className="btn-close btn-close-white"
-                  onClick={() => setSelectedPlan(null)}
+                      onClick={() => setShowMealSelection(false)}
                 ></button>
               </div>
               <div className="modal-body">
                 <div className="row mb-4">
                   <div className="col-md-6">
-                    <div className="card border-primary">
-                      <div className="card-header bg-primary text-white">
+                        <div className="card border-info">
+                          <div className="card-header bg-info text-white">
                         <h6 className="mb-0">
                           <i className="fas fa-info-circle me-2"></i>
                           معلومات الخطة
                     </h6>
                     </div>
                       <div className="card-body">
-                        <p><strong>النظام الغذائي:</strong> {getDietPlanText(selectedPlan.diet_plan)}</p>
-                        <p><strong>السعرات المستهدفة:</strong> {selectedPlan.target_calories} سعرة حرارية</p>
-                         <p><strong>المدة:</strong> من {new Date(selectedPlan.start_date).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' })} إلى {new Date(selectedPlan.end_date).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric', calendar: 'gregory' })}</p>
+                            <p><strong>النظام الغذائي:</strong> {selectedPlan.diet_plan_display || getDietPlanText(selectedPlan.diet_plan)}</p>
+                            <p><strong>الفترة:</strong> من {new Date(selectedPlan.start_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })} إلى {new Date(selectedPlan.end_date).toLocaleDateString('ar-SA', { calendar: 'gregory' })}</p>
+                            <p><strong>الوصف:</strong> {selectedPlan.description || 'لا يوجد وصف'}</p>
                       </div>
                     </div>
                   </div>
@@ -736,293 +602,153 @@ const PatientMealPlans = () => {
                     <div className="card border-success">
                       <div className="card-header bg-success text-white">
                     <h6 className="mb-0">
-                          <i className="fas fa-utensils me-2"></i>
-                      الوجبات المخططة
+                              <i className="fas fa-check-circle me-2"></i>
+                              الوجبات المختارة
                     </h6>
-                    {selectedPlan.meals && selectedPlan.meals.length > 0 && (
-                          <span className="badge bg-light text-success">
-                        {selectedPlan.meals.length} وجبة
-                      </span>
-                    )}
                               </div>
                               <div className="card-body">
-                        {selectedPlan.meals && selectedPlan.meals.length > 0 ? (
-                          <p className="text-success">
-                            <i className="fas fa-check me-2"></i>
-                            تم تخطيط {selectedPlan.meals.length} وجبة
-                          </p>
-                        ) : (
-                          <p className="text-warning">
-                            <i className="fas fa-exclamation-triangle me-2"></i>
-                            لم يتم تخطيط الوجبات بعد
-                          </p>
-                        )}
+                            <p><strong>عدد الوجبات:</strong> {selectedMeals.length}</p>
+                            <p><strong>الوجبات:</strong> {selectedMeals.map(item => item.meal.name).join(', ') || 'لا توجد'}</p>
                                       </div>
                                     </div>
                                       </div>
                       </div>
                       
-                 {/* عرض الوجبات المقترحة دائماً */}
+                    {selectedPlan.meals && selectedPlan.meals.length > 0 ? (
                     <div className="row">
                       <div className="col-12">
-                        <div className="alert alert-success">
-                          <h6 className="alert-heading">
+                          <h6 className="mb-3">
                             <i className="fas fa-utensils me-2"></i>
-                         خطة الوجبات المقترحة للاختيار
+                            الوجبات المتاحة حسب الأيام
                           </h6>
-                          <p className="mb-0">
-                         بناءً على النظام الغذائي المختار ({selectedPlan.diet_plan})، يمكنك اختيار الوجبات التي تريدها من المقترحات التالية:
+                          <p className="text-muted mb-4">
+                            بناءً على النظام الغذائي المختار ({selectedPlan.diet_plan_display || getDietPlanText(selectedPlan.diet_plan)})، يمكنك اختيار الوجبات التي تريدها من المقترحات التالية:
                           </p>
-                     </div>
-                   </div>
-                        </div>
                         
-                        {/* Multi-day Meal Suggestions */}
+                           {/* تجميع الوجبات حسب الأيام */}
                         {(() => {
-                          const startDate = new Date(selectedPlan.start_date)
-                          const endDate = new Date(selectedPlan.end_date)
-                          const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
-                          
-                          return Array.from({ length: daysDiff }, (_, dayIndex) => {
-                            const currentDate = new Date(startDate)
-                            currentDate.setDate(startDate.getDate() + dayIndex)
-                            const dateString = currentDate.toLocaleDateString('ar-SA', { 
-                              year: 'numeric', 
-                              month: 'long', 
-                              day: 'numeric',
-                              calendar: 'gregory'
-                            })
+                             console.log('🔍 Debug - selectedPlan.meals:', selectedPlan.meals?.length, selectedPlan.meals)
+                             
+                             // تجميع الوجبات حسب day_of_week
+                             const mealsByDay = {}
+                             selectedPlan.meals.forEach(meal => {
+                               const day = meal.day_of_week || 1
+                               console.log(`🔍 Debug - Meal: ${meal.name}, Day: ${day}`)
+                               if (!mealsByDay[day]) {
+                                 mealsByDay[day] = []
+                               }
+                               mealsByDay[day].push(meal)
+                             })
+                             
+                             console.log('🔍 Debug - mealsByDay:', mealsByDay)
+                            
+                            // ترتيب الأيام
+                            const sortedDays = Object.keys(mealsByDay).sort((a, b) => parseInt(a) - parseInt(b))
+                            
+                            return sortedDays.map(day => {
+                              const dayMeals = mealsByDay[day]
+                              const dayNames = ['', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد']
+                              const dayName = dayNames[parseInt(day)] || `اليوم ${day}`
                             
                             return (
-                              <div key={dayIndex} className="card mb-4 border-info">
-                                <div className="card-header bg-info text-white">
+                                <div key={day} className="mb-5">
+                                  <div className="card border-primary">
+                                    <div className="card-header bg-primary text-white">
                                   <h5 className="mb-0">
                                     <i className="fas fa-calendar-day me-2"></i>
-                                    اليوم {dayIndex + 1} - {dateString}
+                                        {dayName} - {dayMeals.length} وجبة
                                   </h5>
-                                  <small>اختر الوجبات لهذا اليوم من المقترحات التالية</small>
-                                </div>
-                                <div className="card-body">
-                        {(() => {
-                          // استخدام الوجبات الحقيقية من قاعدة البيانات إذا كانت متوفرة
-                          const realMeals = selectedPlan.meals || []
-                          console.log('الوجبات الحقيقية:', realMeals)
-                          const dietMeals = realMeals.length > 0 ? 
-                            realMeals.reduce((acc, meal) => {
-                              const mealType = meal.meal_type_name || meal.meal_type_name_ar || 'breakfast'
-                              console.log('نوع الوجبة:', mealType, 'للوجبة:', meal.name)
-                              if (!acc[mealType]) acc[mealType] = []
-                              acc[mealType].push(meal)
-                              return acc
-                            }, {}) : 
-                            getSampleMealsForDietPlan(selectedPlan.diet_plan)
-                          console.log('الوجبات المجمعة:', dietMeals)
-                          
-                                    const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack']
-                          
-                          return mealTypes.map((mealType, typeIndex) => {
-                            const mealsForType = dietMeals[mealType] || []
-                            if (mealsForType.length === 0) return null
-                            
-                            return (
-                                        <div key={typeIndex} className="card mb-3 border-success">
-                                <div className="card-header bg-success text-white">
-                                            <h6 className="mb-0">
-                                    <i className="fas fa-utensils me-2"></i>
-                                              {getMealTypeText(mealType)}
-                                            </h6>
-                                            <small>اختر من {mealsForType.length} خيارات مقترحة</small>
                                 </div>
                                 <div className="card-body">
                                   <div className="row">
-                                    {mealsForType.map((meal, mealIndex) => (
-                                      <div key={mealIndex} className="col-md-4 mb-4">
-                                        <div className="card h-100" style={{
-                                          border: isMealSelected(meal, mealType) ? '2px solid #28a745' : '1px solid #dee2e6',
-                                          borderRadius: '12px',
-                                          boxShadow: isMealSelected(meal, mealType) ? '0 4px 8px rgba(40, 167, 69, 0.2)' : '0 2px 4px rgba(0,0,0,0.1)',
-                                          transition: 'all 0.3s ease'
-                                        }}>
-                                          {/* Header */}
-                                          <div className="card-header" style={{
-                                            background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
-                                            color: 'white',
-                                            borderRadius: '12px 12px 0 0',
-                                            border: 'none'
-                                          }}>
-                                            <div className="d-flex justify-content-between align-items-center">
-                                              <div>
-                                                <h6 className="mb-0 fw-bold">
-                                                  <i className="fas fa-utensils me-2"></i>
-                                                  {getMealTypeText(mealType)}
-                                                </h6>
-                                                <small className="opacity-75">وجبة صحية متوازنة</small>
-                                          </div>
-                                              <button
-                                                className={`btn btn-sm ${isMealSelected(meal, mealType) ? 'btn-light text-success' : 'btn-outline-light'}`}
-                                                onClick={() => {
-                                                  console.log('تم النقر على زر الاختيار:', meal.name, mealType)
-                                                  handleMealSelection(meal, mealType)
-                                                }}
-                                                style={{ borderRadius: '20px' }}
-                                              >
-                                                <i className={`fas ${isMealSelected(meal, mealType) ? 'fa-check' : 'fa-plus'}`}></i>
-                                                {isMealSelected(meal, mealType) ? 'مختار' : 'اختر'}
-                                              </button>
-                                            </div>
-                                          </div>
-                                          
-                                          {/* Body */}
-                                          <div className="card-body p-3">
-                                            {/* Meal Title */}
-                                            <h5 className="card-title text-dark fw-bold mb-2">{meal.name}</h5>
-                                            
-                                            {/* Description */}
-                                            {meal.description && (
-                                              <p className="text-muted small mb-3">{meal.description}</p>
-                                            )}
-                                            
-                                            {/* Ingredients Section */}
+                                        {dayMeals.map((meal, mealIndex) => (
+                                          <div key={mealIndex} className="col-md-6 col-lg-4 mb-4">
+                                            <div className="card h-100 border-success">
+                                <div className="card-header bg-success text-white">
+                                            <h6 className="mb-0">
+                                    <i className="fas fa-utensils me-2"></i>
+                                                  {meal.meal_type_name_ar || getMealTypeText(meal.meal_type_name || meal.meal_type || 'breakfast')}
+                                            </h6>
+                                            <small className="text-light">{meal.name}</small>
+                                </div>
+                                <div className="card-body">
                                             {meal.ingredients && meal.ingredients.length > 0 && (
-                                              <div className="ingredients-section mb-3">
-                                                <h6 className="text-primary mb-2 fw-bold">
+                                                  <div className="mb-3">
+                                                    <h6 className="text-primary mb-2">
                                                   <i className="fas fa-shopping-basket me-1"></i>
                                                   المكونات:
                                                 </h6>
                                                 <div className="ingredients-list">
-                                                  {meal.ingredients.map((ingredient, idx) => (
-                                                    <div key={idx} className="ingredient-item mb-2">
-                                                      <div className="d-flex justify-content-between align-items-center p-2" style={{
-                                                        backgroundColor: '#f8f9fa',
-                                                        borderRadius: '8px',
-                                                        border: '1px solid #e9ecef'
-                                                      }}>
+                                                      {meal.ingredients.map((ingredient, idx) => {
+                                                        // حساب سعرات المكون
+                                                        const ingredientCalories = ingredient.calories || 
+                                                          (ingredient.calories_per_100g && ingredient.amount ? 
+                                                            (ingredient.calories_per_100g * ingredient.amount / 100) : 
+                                                          (ingredient.food?.calories_per_100g && ingredient.amount ? 
+                                                            (ingredient.food.calories_per_100g * ingredient.amount / 100) : 0))
+                                                        const ingredientProtein = ingredient.protein || 
+                                                          (ingredient.protein_per_100g && ingredient.amount ? 
+                                                            (ingredient.protein_per_100g * ingredient.amount / 100) : 
+                                                          (ingredient.food?.protein_per_100g && ingredient.amount ? 
+                                                            (ingredient.food.protein_per_100g * ingredient.amount / 100) : 0))
+                                                        
+                                                        return (
+                                                        <div key={idx} className="ingredient-item d-flex justify-content-between align-items-center mb-1 p-1 bg-light rounded small">
                                                         <div className="d-flex align-items-center">
-                                                          <i className="fas fa-circle text-success me-2" style={{ fontSize: '0.5rem' }}></i>
-                                                          <span className="fw-bold text-dark">
-                                                            {ingredient.food_name_ar || ingredient.food_name || ingredient.food?.name_ar || ingredient.food?.name || ingredient.name || 'مكون غير محدد'}
-                                                          </span>
+                                                            <i className="fas fa-circle text-success me-1" style={{ fontSize: '0.4rem' }}></i>
+                                                            <span className="fw-bold">
+                                                              {ingredient.food_name_ar || ingredient.food_name || ingredient.food?.name_ar || ingredient.food?.name || ingredient.name || 'مكون غير محدد'}
+                                                            </span>
                                                         </div>
-                                                        <div className="text-muted d-flex align-items-center">
-                                                          <span className="badge bg-primary me-2">
-                                                            {ingredient.amount || ingredient.quantity || 0}g
-                                                          </span>
-                                                          <small className="text-info">
-                                                            سعرات: {Math.round(ingredient.calories || ingredient.calories_per_100g || 0)} | بروتين: {Math.round(ingredient.protein || ingredient.protein_per_100g || 0)}g
-                                                          </small>
+                                                          <div className="text-muted">
+                                                            <span className="badge bg-primary small">
+                                                              {ingredient.amount || ingredient.quantity || 0}g
+                                              </span>
                                                           {ingredient.notes && (
-                                                            <small className="text-info ms-1">- {ingredient.notes}</small>
+                                                              <small className="text-info ms-1">- {ingredient.notes}</small>
                                                           )}
-                                                        </div>
                                                       </div>
                                                     </div>
-                                                  ))}
+                                                      )
+                                                      })}
                                                 </div>
                                               </div>
                                             )}
-                                            
-                                            {/* Nutrition Info */}
-                                            <div className="nutrition-info">
-                                              <h6 className="text-success mb-2 fw-bold">
-                                                <i className="fas fa-chart-pie me-1"></i>
-                                                القيم الغذائية الإجمالية:
-                                              </h6>
-                                              <div className="row g-2">
-                                                <div className="col-6">
-                                                  <div className="p-2 text-center" style={{
-                                                    backgroundColor: '#007bff',
-                                                    color: 'white',
-                                                    borderRadius: '8px'
-                                                  }}>
-                                                    <div className="fw-bold fs-6">{Math.round(meal.total_nutrition?.calories || meal.calories || 0)}</div>
-                                                    <small>سعرة</small>
-                                                  </div>
-                                                </div>
-                                                <div className="col-6">
-                                                  <div className="p-2 text-center" style={{
-                                                    backgroundColor: '#28a745',
-                                                    color: 'white',
-                                                    borderRadius: '8px'
-                                                  }}>
-                                                    <div className="fw-bold fs-6">{Math.round(meal.total_nutrition?.protein || meal.protein || 0)}g</div>
-                                                  <small>بروتين</small>
-                                                </div>
-                                              </div>
-                                                <div className="col-6">
-                                                  <div className="p-2 text-center" style={{
-                                                    backgroundColor: '#17a2b8',
-                                                    color: 'white',
-                                                    borderRadius: '8px'
-                                                  }}>
-                                                    <div className="fw-bold fs-6">{Math.round(meal.total_nutrition?.carbs || meal.carbs || 0)}g</div>
-                                                  <small>كربوهيدرات</small>
-                                                </div>
-                                              </div>
-                                                <div className="col-6">
-                                                  <div className="p-2 text-center" style={{
-                                                    backgroundColor: '#ffc107',
-                                                    color: 'white',
-                                                    borderRadius: '8px'
-                                                  }}>
-                                                    <div className="fw-bold fs-6">{Math.round(meal.total_nutrition?.fat || meal.fat || 0)}g</div>
-                                                  <small>دهون</small>
-                                                </div>
-                                              </div>
-                                            </div>
+                                            {/* تم إخفاء السعرات الإجمالية للوجبة */}
                                           </div>
-                                            
-                                            {/* Warning if no nutrition data */}
-                                            {(!meal.calories && !meal.total_nutrition?.calories) && (
-                                              <div className="alert alert-warning d-flex align-items-center mt-3" style={{ fontSize: '0.8rem' }}>
-                                                <i className="fas fa-exclamation-triangle me-2"></i>
-                                                <span>لا توجد قيم غذائية متوفرة</span>
-                                              </div>
-                                            )}
+                                              
+                                              <div className="card-footer">
+                                                <button
+                                                  className={`btn w-100 ${isMealSelected(meal, 'breakfast') ? 'btn-success' : 'btn-outline-success'}`}
+                                                  onClick={() => handleMealSelection(meal, 'breakfast')}
+                                                >
+                                                  <i className={`fas ${isMealSelected(meal, 'breakfast') ? 'fa-check' : 'fa-plus'} me-2`}></i>
+                                                  {isMealSelected(meal, 'breakfast') ? 'تم الاختيار' : 'اختيار الوجبة'}
+                                                </button>
                                           </div>
                                         </div>
                                       </div>
                                     ))}
                                   </div>
                                           </div>
-                                        </div>
-                                      )
-                                    })
-                                  })()}
                                 </div>
                               </div>
                             )
                           })
                         })()}
-                        
-                {/* عرض حالة الاختيارات للتشخيص */}
-                <div className="row mt-3">
-                  <div className="col-12">
-                    <div className="alert alert-info">
-                      <h6 className="mb-2">
-                        <i className="fas fa-info-circle me-2"></i>
-                        حالة الاختيارات (للتشخيص)
-                      </h6>
-                      <p className="mb-1">
-                        <strong>عدد الوجبات المختارة:</strong> {selectedMeals.length}
-                      </p>
-                      <p className="mb-2">
-                        <strong>الوجبات المختارة:</strong> {selectedMeals.map(item => item.meal.name).join(', ') || 'لا توجد'}
-                      </p>
-                      <button 
-                        className="btn btn-sm btn-outline-primary"
-                        onClick={() => {
-                          console.log('Current selectedMeals state:', selectedMeals)
-                          console.log('Current selectedMeals length:', selectedMeals.length)
-                        }}
-                      >
-                        <i className="fas fa-bug me-1"></i>
-                        اختبار الحالة
-                      </button>
                     </div>
                   </div>
+                    ) : (
+                      <div className="text-center py-4">
+                        <div className="alert alert-warning">
+                          <h6>لا توجد وجبات متاحة لهذه الخطة</h6>
+                          <p>يرجى التواصل مع طبيبك لإضافة وجبات لهذه الخطة.</p>
                 </div>
+                  </div>
+                    )}
 
-                {/* زر حفظ الاختيارات */}
+
+                    {/* عرض الوجبات المختارة */}
                 {selectedMeals.length > 0 && (
                   <div className="row mt-4">
                     <div className="col-12">
@@ -1035,68 +761,29 @@ const PatientMealPlans = () => {
                           </div>
                           <div className="card-body">
                           <div className="row">
-                            {selectedMeals.map((item, index) => (
-                              <div key={index} className="col-md-6 mb-3">
+                                {selectedMeals.map((selection, index) => {
+                                  // حساب السعرات من المكونات مباشرة
+                                  const mealCalories = calculateMealCaloriesFromIngredients(selection.meal)
+                                  return (
+                                  <div key={index} className="col-md-6 col-lg-4 mb-3">
                                 <div className="card border-success">
-                                  <div className="card-body p-3">
-                                    <div className="d-flex align-items-center mb-2">
-                                <i className="fas fa-check-circle text-success me-2"></i>
-                                  <span className="fw-bold">{item.meal.name}</span>
-                                  <small className="text-muted ms-2">({item.mealType})</small>
-                                    </div>
-                                    
-                                    {/* عرض المكونات */}
-                                    {item.meal.ingredients && item.meal.ingredients.length > 0 && (
-                                      <div className="ingredients-section">
-                                        <h6 className="text-primary mb-2 small">
-                                          <i className="fas fa-shopping-basket me-1"></i>
-                                          المكونات:
+                                      <div className="card-body">
+                                        <h6 className="card-title text-success">
+                                          <i className="fas fa-check-circle me-2"></i>
+                                          {selection.meal.name}
                                         </h6>
-                                        <div className="ingredients-list">
-                                          {item.meal.ingredients.map((ingredient, idx) => (
-                                            <div key={idx} className="ingredient-item d-flex justify-content-between align-items-center mb-1 p-1 bg-light rounded small">
-                                              <div className="d-flex align-items-center">
-                                                <i className="fas fa-circle text-success me-1" style={{ fontSize: '0.4rem' }}></i>
-                                                <span className="fw-bold">
-                                                  {ingredient.food_name_ar || ingredient.food_name || ingredient.food?.name_ar || ingredient.food?.name || ingredient.name || 'مكون غير محدد'}
-                                                </span>
+                                        <p className="card-text small text-muted">
+                                          نوع الوجبة: {getMealTypeText(selection.mealType)}
+                                        </p>
+                                        <p className="card-text small text-muted">
+                                          تم الاختيار: {new Date(selection.selectedAt).toLocaleTimeString('ar-SA')}
+                                        </p>
                                               </div>
-                                              <div className="text-muted">
-                                                <span className="badge bg-primary small">
-                                                  {ingredient.amount || ingredient.quantity || 0}g
-                                                </span>
-                                                <small className="text-info ms-1">
-                                                  سعرات: {Math.round(ingredient.calories || ingredient.calories_per_100g || 0)} | بروتين: {Math.round(ingredient.protein || ingredient.protein_per_100g || 0)}g
-                                                </small>
-                                                {ingredient.notes && (
-                                                  <small className="text-info ms-1">- {ingredient.notes}</small>
-                                                )}
                                               </div>
                                             </div>
-                                          ))}
+                                  )
+                                })}
                                         </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                         <div className="card-footer">
-                           <div className="text-center mb-2">
-                             <small className="text-success">
-                               <i className="fas fa-check-circle me-1"></i>
-                               تم اختيار {selectedMeals.length} وجبة - اضغط حفظ لإرسال اختياراتك للطبيب
-                             </small>
-                      </div>
-                           <button
-                             className="btn btn-success w-100"
-                             onClick={saveSelectedMeals}
-                           >
-                             <i className="fas fa-save me-2"></i>
-                             حفظ الاختيارات وإرسالها للطبيب
-                           </button>
                     </div>
                 </div>
                     </div>
@@ -1107,22 +794,26 @@ const PatientMealPlans = () => {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setSelectedPlan(null)}
+                      onClick={() => setShowMealSelection(false)}
                 >
-                  <i className="fas fa-times me-2"></i>
-                  إغلاق
+                      إلغاء
                 </button>
-                 <div className="text-center">
-                   <small className="text-success">
-                     <i className="fas fa-utensils me-1"></i>
-                     اختر الوجبات التي تريدها من المقترحات
-                   </small>
-                 </div>
+                           <button
+                      type="button"
+                      className="btn btn-success"
+                             onClick={saveSelectedMeals}
+                      disabled={selectedMeals.length === 0}
+                           >
+                             <i className="fas fa-save me-2"></i>
+                      حفظ الاختيارات ({selectedMeals.length})
+                           </button>
               </div>
             </div>
           </div>
         </div>
       )}
+          </div>
+        </div>
     </div>
   )
 }

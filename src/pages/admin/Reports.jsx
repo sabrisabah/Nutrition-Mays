@@ -49,7 +49,7 @@ const AdminReports = () => {
   }
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('ar-SA')
+    return new Date(dateString).toLocaleDateString('ar-SA', { calendar: 'gregory' })
   }
 
   const handleDateChange = (field, value) => {

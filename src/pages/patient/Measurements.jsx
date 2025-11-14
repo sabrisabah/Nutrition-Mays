@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { toast } from 'react-toastify'
 import { useLanguage } from '../../hooks/useLanguage'
 import { useAuth } from '../../hooks/useAuth'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import api from '../../services/api'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 const PatientMeasurements = () => {
   const { t } = useLanguage()
@@ -22,7 +23,7 @@ const PatientMeasurements = () => {
   )
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('ar-SA')
+    return new Date(dateString).toLocaleDateString('ar-SA', { calendar: 'gregory' })
   }
 
   const getMeasurementTrend = (measurements, field) => {
@@ -52,6 +53,34 @@ const PatientMeasurements = () => {
       default: return 'مستقر'
     }
   }
+
+  // تحضير البيانات للرسم البياني
+  const chartData = useMemo(() => {
+    if (!measurements || measurements.length === 0) return []
+    
+    // ترتيب القياسات حسب التاريخ (من الأقدم للأحدث)
+    const sortedMeasurements = [...measurements].sort((a, b) => {
+      const dateA = new Date(a.measured_at || a.recorded_date || a.measured_date)
+      const dateB = new Date(b.measured_at || b.recorded_date || b.measured_date)
+      return dateA - dateB
+    })
+    
+    return sortedMeasurements.map((measurement) => {
+      const date = new Date(measurement.measured_at || measurement.recorded_date || measurement.measured_date)
+      return {
+        date: date.toLocaleDateString('ar-SA', { 
+          calendar: 'gregory',
+          month: 'short',
+          day: 'numeric'
+        }),
+        fullDate: date.toLocaleDateString('ar-SA', { calendar: 'gregory' }),
+        weight: parseFloat(measurement.weight) || 0,
+        bodyFat: parseFloat(measurement.body_fat_percentage) || 0,
+        muscleMass: parseFloat(measurement.muscle_mass) || 0,
+        waistCircumference: parseFloat(measurement.waist_circumference) || 0,
+      }
+    })
+  }, [measurements])
 
   if (measurementsLoading) {
     return (
@@ -180,6 +209,148 @@ const PatientMeasurements = () => {
                     <small className="text-muted">محيط الخصر</small>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Weight Progress Chart */}
+      {showChart && measurements && measurements.length > 0 && (
+        <div className="row mb-4">
+          <div className="col-12">
+            <div className="card">
+              <div className="card-header bg-primary text-white">
+                <h5 className="mb-0">
+                  <i className="fas fa-chart-line me-2"></i>
+                  متابعة تطور الوزن
+                </h5>
+              </div>
+              <div className="card-body">
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="date" 
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                      style={{ fontSize: '12px' }}
+                    />
+                    <YAxis 
+                      label={{ value: 'الوزن (كجم)', angle: -90, position: 'insideLeft' }}
+                      domain={['dataMin - 2', 'dataMax + 2']}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: '#fff', 
+                        border: '1px solid #ccc',
+                        borderRadius: '5px',
+                        textAlign: 'right'
+                      }}
+                      formatter={(value, name) => {
+                        if (name === 'weight') return [`${value} كجم`, 'الوزن']
+                        if (name === 'bodyFat') return [`${value}%`, 'نسبة الدهون']
+                        if (name === 'muscleMass') return [`${value} كجم`, 'كتلة العضلات']
+                        if (name === 'waistCircumference') return [`${value} سم`, 'محيط الخصر']
+                        return [value, name]
+                      }}
+                      labelFormatter={(label) => `التاريخ: ${label}`}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '20px' }}
+                      formatter={(value) => {
+                        if (value === 'weight') return 'الوزن (كجم)'
+                        if (value === 'bodyFat') return 'نسبة الدهون (%)'
+                        if (value === 'muscleMass') return 'كتلة العضلات (كجم)'
+                        if (value === 'waistCircumference') return 'محيط الخصر (سم)'
+                        return value
+                      }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="weight" 
+                      stroke="#0d6efd" 
+                      strokeWidth={3}
+                      dot={{ r: 6, fill: '#0d6efd' }}
+                      activeDot={{ r: 8 }}
+                      name="weight"
+                    />
+                    {chartData.some(d => d.bodyFat > 0) && (
+                      <Line 
+                        type="monotone" 
+                        dataKey="bodyFat" 
+                        stroke="#198754" 
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={{ r: 4, fill: '#198754' }}
+                        name="bodyFat"
+                      />
+                    )}
+                    {chartData.some(d => d.muscleMass > 0) && (
+                      <Line 
+                        type="monotone" 
+                        dataKey="muscleMass" 
+                        stroke="#0dcaf0" 
+                        strokeWidth={2}
+                        strokeDasharray="3 3"
+                        dot={{ r: 4, fill: '#0dcaf0' }}
+                        name="muscleMass"
+                      />
+                    )}
+                    {chartData.some(d => d.waistCircumference > 0) && (
+                      <Line 
+                        type="monotone" 
+                        dataKey="waistCircumference" 
+                        stroke="#ffc107" 
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        dot={{ r: 4, fill: '#ffc107' }}
+                        name="waistCircumference"
+                      />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+                
+                {/* إحصائيات سريعة */}
+                {chartData.length > 1 && (
+                  <div className="row mt-4">
+                    <div className="col-md-3 mb-2">
+                      <div className="p-3 bg-primary bg-opacity-10 rounded text-center">
+                        <div className="fw-bold text-primary">
+                          {chartData[0].weight} كجم
+                        </div>
+                        <small className="text-muted">الوزن الأول</small>
+                      </div>
+                    </div>
+                    <div className="col-md-3 mb-2">
+                      <div className="p-3 bg-success bg-opacity-10 rounded text-center">
+                        <div className="fw-bold text-success">
+                          {chartData[chartData.length - 1].weight} كجم
+                        </div>
+                        <small className="text-muted">الوزن الحالي</small>
+                      </div>
+                    </div>
+                    <div className="col-md-3 mb-2">
+                      <div className="p-3 bg-info bg-opacity-10 rounded text-center">
+                        <div className="fw-bold text-info">
+                          {(chartData[chartData.length - 1].weight - chartData[0].weight).toFixed(1)} كجم
+                        </div>
+                        <small className="text-muted">
+                          {chartData[chartData.length - 1].weight >= chartData[0].weight ? 'زيادة' : 'نقصان'}
+                        </small>
+                      </div>
+                    </div>
+                    <div className="col-md-3 mb-2">
+                      <div className="p-3 bg-warning bg-opacity-10 rounded text-center">
+                        <div className="fw-bold text-warning">
+                          {chartData.length}
+                        </div>
+                        <small className="text-muted">عدد القياسات</small>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

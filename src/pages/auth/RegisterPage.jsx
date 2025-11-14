@@ -16,6 +16,7 @@ const RegisterPage = () => {
     password: '',
     password_confirm: '',
     role: 'patient',
+    date_of_birth: '',
     // Physical information
     gender: '',
     height: '',
@@ -206,6 +207,25 @@ const RegisterPage = () => {
                     />
                     {errors.phone && (
                       <div className="invalid-feedback">{errors.phone[0]}</div>
+                    )}
+                  </div>
+
+                  <div className="mb-3">
+                    <label htmlFor="date_of_birth" className="form-label">
+                      {language === 'ar' ? 'تاريخ الميلاد *' : 'Date of Birth *'}
+                    </label>
+                    <input
+                      type="date"
+                      className={`form-control ${errors.date_of_birth ? 'is-invalid' : ''}`}
+                      id="date_of_birth"
+                      name="date_of_birth"
+                      value={formData.date_of_birth}
+                      onChange={handleChange}
+                      style={{ direction: language === 'ar' ? 'rtl' : 'ltr' }}
+                      required
+                    />
+                    {errors.date_of_birth && (
+                      <div className="invalid-feedback">{errors.date_of_birth[0]}</div>
                     )}
                   </div>
 

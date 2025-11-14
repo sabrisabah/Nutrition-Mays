@@ -311,6 +311,40 @@ const PatientProfile = () => {
         </div>
       </div>
 
+      {/* Clinic Contact Information */}
+      <div className="row mb-4">
+        <div className="col-12">
+          <div className="alert alert-info">
+            <div className="d-flex align-items-center">
+              <i className="fas fa-phone-alt me-3 fs-4"></i>
+              <div className="flex-grow-1">
+                <h6 className="mb-2">
+                  <strong>معلومات الاتصال بالعيادة</strong>
+                </h6>
+                <div className="d-flex align-items-center flex-wrap gap-3">
+                  <div>
+                    <i className="fas fa-hospital text-info me-2"></i>
+                    <strong className="text-info">رقم العيادة: </strong>
+                    <a 
+                      href="tel:+9647879558889" 
+                      className="text-primary fw-bold text-decoration-none"
+                    >
+                      +9647879558889
+                    </a>
+                    <button 
+                      className="btn btn-sm btn-outline-primary ms-2"
+                      onClick={() => window.open('tel:+9647879558889', '_self')}
+                    >
+                      <i className="fas fa-phone me-1"></i>
+                      اتصل
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit}>
         <div className="row">

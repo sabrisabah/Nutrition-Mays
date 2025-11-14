@@ -59,8 +59,153 @@ class PatientProfile(models.Model):
     medications = models.TextField(blank=True, help_text=_('Current medications'))
     emergency_contact = models.CharField(max_length=100, blank=True)
     emergency_phone = models.CharField(max_length=20, blank=True)
+    daily_calories = models.IntegerField(blank=True, null=True, help_text=_('Daily calorie intake target'))
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def calculate_bmr(self):
+        """Calculate Basal Metabolic Rate (BMR) using Mifflin-St Jeor equation"""
+        if not all([self.current_weight, self.height]):
+            return None
+        
+        # Calculate age from date of birth
+        age = 30  # default age
+        if self.user and self.user.date_of_birth:
+            from datetime import date
+            today = date.today()
+            age = today.year - self.user.date_of_birth.year
+            if today.month < self.user.date_of_birth.month or (today.month == self.user.date_of_birth.month and today.day < self.user.date_of_birth.day):
+                age -= 1
+        
+        # Mifflin-St Jeor equation
+        if self.gender == 'male':
+            bmr = (10 * self.current_weight) + (6.25 * self.height) - (5 * age) + 5
+        else:
+            bmr = (10 * self.current_weight) + (6.25 * self.height) - (5 * age) - 161
+        
+        return round(bmr)
+    
+    def calculate_tdee(self):
+        """Calculate Total Daily Energy Expenditure (TDEE)"""
+        bmr = self.calculate_bmr()
+        if not bmr:
+            return None
+        
+        activity_multipliers = {
+            'sedentary': 1.2,
+            'light': 1.375,
+            'moderate': 1.55,
+            'active': 1.725,
+            'very_active': 1.9
+        }
+        
+        multiplier = activity_multipliers.get(self.activity_level, 1.55)
+        tdee = bmr * multiplier
+        
+        return round(tdee)
+    
+    def calculate_daily_calories(self, force_recalculate=False):
+        """
+        Calculate daily calories required based on weight, height, activity, and goal
+        
+        الخطوات:
+        1. حساب TDEE (Total Daily Energy Expenditure)
+        2. تطبيق تعديل الهدف (goal adjustment):
+           - lose_weight: طرح 500 سعرة (عجز 500 سعرة)
+           - gain_weight: إضافة 500 سعرة (فائض 500 سعرة)
+           - build_muscle: إضافة 300 سعرة
+           - maintain_weight: بدون تعديل
+           - improve_health: بدون تعديل
+        
+        Parameters:
+        -----------
+        force_recalculate : bool
+            إذا كان True، يعيد حساب السعرات حتى لو كانت daily_calories محفوظة
+            هذا يضمن تطبيق تعديل الهدف دائماً
+        """
+        tdee = self.calculate_tdee()
+        if not tdee:
+            return None
+        
+        # Apply goal-based adjustment to TDEE
+        goal_adjustments = {
+            'lose_weight': -500,      # عجز 500 سعرة حرارية لفقدان الوزن
+            'gain_weight': 500,       # فائض 500 سعرة حرارية لزيادة الوزن
+            'build_muscle': 300,      # فائض 300 سعرة حرارية لبناء العضلات
+            'maintain_weight': 0,      # بدون تعديل - الحفاظ على الوزن
+            'improve_health': 0        # بدون تعديل - تحسين الصحة
+        }
+        
+        adjustment = goal_adjustments.get(self.goal, 0)
+        calculated_calories = tdee + adjustment
+        
+        # Ensure minimum calories (at least 1200 for safety)
+        if calculated_calories < 1200:
+            calculated_calories = 1200
+            print(f"⚠️ Warning: Calculated calories ({tdee + adjustment}) below minimum (1200). Using 1200.")
+        
+        # If daily_calories is manually set and force_recalculate is False, check if it matches calculated
+        if not force_recalculate and self.daily_calories and self.daily_calories > 0:
+            # Check if saved value matches calculated (within 10 calories tolerance)
+            if abs(self.daily_calories - calculated_calories) <= 10:
+                # Saved value matches calculated, use it
+                return self.daily_calories
+            else:
+                # Saved value doesn't match calculated (probably old value without goal adjustment)
+                # Recalculate and update
+                print(f"🔄 Saved calories ({self.daily_calories}) doesn't match calculated ({calculated_calories}). Recalculating...")
+        
+        print(f"📊 Daily Calories Calculation:")
+        print(f"  TDEE: {tdee} calories")
+        print(f"  Goal: {self.goal}")
+        print(f"  Adjustment: {adjustment} calories")
+        print(f"  Final daily calories: {calculated_calories} calories")
+        
+        return round(calculated_calories)
+    
+    def calculate_nutrition_targets(self):
+        """Calculate nutrition targets (protein, carbs, fat) based on daily calories"""
+        daily_calories = self.calculate_daily_calories()
+        if not daily_calories:
+            return None
+        
+        # Protein calculation (based on goal and weight)
+        protein_per_kg = {
+            'lose_weight': 2.2,
+            'maintain_weight': 1.6,
+            'gain_weight': 1.8,
+            'build_muscle': 2.0,
+            'improve_health': 1.8
+        }
+        protein_per_kg_value = protein_per_kg.get(self.goal, 1.6)
+        protein_grams = round(self.current_weight * protein_per_kg_value)
+        protein_calories = protein_grams * 4
+        
+        # Fat calculation (percentage of total calories)
+        fat_percentage = {
+            'lose_weight': 0.25,
+            'maintain_weight': 0.30,
+            'gain_weight': 0.35,
+            'build_muscle': 0.25,
+            'improve_health': 0.30
+        }
+        fat_percentage_value = fat_percentage.get(self.goal, 0.30)
+        fat_calories = daily_calories * fat_percentage_value
+        fat_grams = round(fat_calories / 9)
+        
+        # Carbs calculation (remaining calories)
+        carb_calories = daily_calories - protein_calories - fat_calories
+        carb_grams = round(carb_calories / 4)
+        
+        return {
+            'calories': daily_calories,
+            'protein': protein_grams,
+            'carbs': carb_grams,
+            'fat': fat_grams,
+            'protein_calories': protein_calories,
+            'fat_calories': fat_calories,
+            'carb_calories': carb_calories
+        }
 
     def __str__(self):
         return f"{self.user.get_full_name()} - Patient Profile"

@@ -240,6 +240,22 @@ class MealIngredient(models.Model):
     def get_nutrition(self):
         """Get nutrition values for this ingredient amount"""
         return self.food.get_nutrition_for_amount(self.amount)
+    
+    def get_calories_per_100g(self):
+        """Get calories per 100g for this ingredient's food"""
+        if self.food:
+            return self.food.calories_per_100g
+        return 0
+    
+    get_calories_per_100g.short_description = "Calories per 100g"
+    
+    def get_actual_calories(self):
+        """Calculate actual calories based on amount: (amount × calories_per_100g) ÷ 100"""
+        if self.food and self.amount:
+            return (self.amount * self.food.calories_per_100g) / 100
+        return 0
+    
+    get_actual_calories.short_description = "Actual Calories"
 
 
 class MealPlanProgress(models.Model):
@@ -318,7 +334,9 @@ class PatientMealSelection(models.Model):
     
     class Meta:
         ordering = ['-selected_at']
-        unique_together = ['patient', 'meal_plan', 'meal_name', 'meal_type', 'selected_at']
+        # Removed 'selected_at' from unique_together to avoid constraint violations
+        # when multiple meals are saved at the same time
+        unique_together = ['patient', 'meal_plan', 'meal_name', 'meal_type']
     
     def __str__(self):
         return f"{self.patient.username} - {self.meal_name} ({self.meal_type})"

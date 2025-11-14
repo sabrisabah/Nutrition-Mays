@@ -41,10 +41,10 @@ const NutritionCalculator = ({ patientProfile, onNutritionCalculated }) => {
     return Math.round(bmr * multiplier)
   }
 
-  // حساب السعرات المستهدفة حسب الهدف
-  const calculateTargetCalories = (tdee, goal) => {
-    // طرح 500 سعرة حرارية من إجمالي استهلاك الطاقة
-    return Math.round(tdee - 500)
+  // حساب السعرات اليومية المطلوبة (استخدام TDEE مباشرة)
+  const calculateDailyCalories = (tdee, goal) => {
+    // استخدام TDEE مباشرة كالسعرات اليومية المطلوبة
+    return Math.round(tdee)
   }
 
   // حساب البروتين (1.6-2.2 جم لكل كيلوغرام من وزن الجسم)
@@ -108,7 +108,7 @@ const NutritionCalculator = ({ patientProfile, onNutritionCalculated }) => {
     if (!patientProfile) return
 
     const { current_weight, height, goal, activity_level } = patientProfile
-    const age = patientProfile.user?.age || 30 // افتراضي 30 سنة
+    const age = patientProfile.user?.age || patientProfile.age || 30 // استخدام العمر الفعلي للمريض
     const gender = patientProfile.gender || 'male'
 
     // حساب العمر من تاريخ الميلاد إذا كان متوفراً
@@ -121,7 +121,7 @@ const NutritionCalculator = ({ patientProfile, onNutritionCalculated }) => {
 
     const bmr = calculateBMR(current_weight, height, calculatedAge, gender)
     const tdee = calculateTDEE(bmr, activity_level)
-    const targetCalories = calculateTargetCalories(tdee, goal)
+    const targetCalories = calculateDailyCalories(tdee, goal)
     const protein = calculateProtein(current_weight, goal)
     const fat = calculateFat(targetCalories, goal)
     const carbs = calculateCarbs(targetCalories, protein, fat)
@@ -175,11 +175,11 @@ const NutritionCalculator = ({ patientProfile, onNutritionCalculated }) => {
             </div>
             
             <div className="mb-3">
-              <label className="form-label fw-bold text-success">السعرات المستهدفة</label>
+              <label className="form-label fw-bold text-success">السعرات اليومية المطلوبة</label>
               <div className="form-control-plaintext bg-success bg-opacity-10 p-2 rounded border border-success">
                 {nutritionData.targetCalories} سعرة حرارية/يوم
               </div>
-              <small className="text-muted">حسب الهدف المحدد</small>
+              <small className="text-muted">السعرات اليومية المطلوبة للحفاظ على الوزن الحالي</small>
             </div>
           </div>
           

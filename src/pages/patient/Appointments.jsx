@@ -482,7 +482,14 @@ const PatientAppointments = () => {
               <br />
               <small className="text-primary">
                 <i className="fas fa-phone me-1"></i>
-                للاستفسارات: <strong>07766551551</strong>
+                للاستفسارات: <strong>+9647879558889</strong>
+                <button 
+                  className="btn btn-sm btn-outline-primary ms-2"
+                  onClick={() => window.open('tel:+9647879558889', '_self')}
+                >
+                  <i className="fas fa-phone me-1"></i>
+                  اتصل
+                </button>
               </small>
             </div>
           </div>
@@ -1029,11 +1036,11 @@ ${selectedAppointment.status === 'completed' && selectedAppointment.diagnosis ? 
                       <div>
                         <strong>للاستفسارات أو الحجز المباشر:</strong>
                         <br />
-                        <span className="text-success fw-bold">07766551551</span>
+                        <span className="text-success fw-bold">+9647879558889</span>
                         <button 
                           type="button"
                           className="btn btn-sm btn-outline-success ms-2"
-                          onClick={() => window.open('tel:07766551551', '_self')}
+                          onClick={() => window.open('tel:+9647879558889', '_self')}
                         >
                           <i className="fas fa-phone me-1"></i>
                           اتصل
